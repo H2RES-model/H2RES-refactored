@@ -1,0 +1,2 @@
+system,region,name,tech,carrier_in,carrier_out,bus_in,bus_out,e_nom,e_nom_max,e_min,duration_charge,duration_discharge,efficiency_charge,efficiency_discharge,standby_loss,capital_cost_energy,capital_cost_power_charge,capital_cost_power_discharge,lifetime,spillage_cost
+HR,HR,ETESS,ETESS,electricity,heat,HR_EL,HR_General_heating,50,1000,2,8,20,0.99,0.95,0.001,20,150,50,15,0
