@@ -10,15 +10,14 @@ reservoirs, thermal storage, and hydrogen tanks.
 
 ## What it represents
 
-Storage units hold **energy-side** attributes such as:
+Storage units hold **power-side** and **energy-side** attributes such as:
 
-- energy capacity (`e_nom`)
+- nominal (dis)charging power (`p_charge_nom`, `p_discharge_nom` etc.)
+- energy capacity (`e_nom`, `e_nom_max` etc.)
 - charging/discharging power limits
 - efficiencies and losses
 - inflows (e.g., hydro)
 
-Power-side parameters (turbine capacities, conversion units) are stored in
-`Generators` when relevant.
 
 ## Typical source files
 

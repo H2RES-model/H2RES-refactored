@@ -4,10 +4,6 @@ H2RES Refactored is a data model and loader pipeline for energy system inputs.
 It turns structured input tables into a validated, typed `SystemParameters`
 object that downstream models can consume.
 
-This documentation mirrors a PyPSA-style structure: a high-level **design
-overview**, a focused **components** section, hands-on **tutorials**, and an
-**API reference** for developers.
-
 ## Quick start
 
 ```bash
