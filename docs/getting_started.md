@@ -1,7 +1,16 @@
 # Getting Started
 
-This project provides a data model (`data_models`) and loaders
-(`data_loaders`) for energy system inputs.
+H2RES Refactored reads input tables, validates them with Pydantic, and
+assembles a single `SystemParameters` object for downstream modeling.
+
+## Prerequisites
+
+Requirements:
+- Python 3.10+ installed
+- A terminal (PowerShell on Windows is fine)
+
+Optional:
+- A code editor (VS Code, PyCharm, etc.)
 
 ## Install
 
@@ -13,20 +22,113 @@ python -m venv .venv
 pip install -r docs/requirements.txt
 ```
 
-## Build docs
-The H2RES model can be installed using the following command. 
-# TODO: Write command 
+## Preview the docs
+
+MkDocs provides a live-reload server.
+
 ```bash
-python 
+mkdocs serve
 ```
 
-## Loading input data
-Users can prepare an H2RES model using the template CSV files. The model consists of different predefined, which enable the representation of different physical elements (generators, storage units, loads, converter etc.). Three component types are used to represent the physical elements of an energy system: `Generators`, `StorageUnits`, `Demand`. All additional information abouut a system are stored in the `Bus`, `SystemSets`, `SystemParameters` classes. To ensure consistent, typed and validated input data, Pydantic datacalsses are. 
+Open the local URL printed by MkDocs.
 
-# TODO: Improve text, making it compelling for beginners who know little about programming.
+## Build the docs
 
-Loader functions read input data from the template CSV files and create instances of the `data_models` classes.    
+This builds a static site under `site/`.
 
-- `data_models`: Pydantic models for system data (sets, buses, generators, storage, demand).
-- `data_loaders`: CSV and time-series loaders that assemble `SystemParameters`.
-- `data`: Example input tables for electricity, heating, and cooling sectors.
+```bash
+mkdocs build
+```
+
+## Core data model
+
+- `Generators`: power-converting units and converters.
+- `StorageUnits`: energy storage assets.
+- `Demand`: time-series demand by carrier and bus.
+- `Bus`: network buses and carrier connections.
+- `SystemSets`: index sets (years, periods, unit lists, subsets).
+- `SystemParameters`: top-level container that ties everything together.
+
+## Understanding the input files
+
+Inputs live in the `data/` folder. There is one subfolder per sector:
+
+- `data/electricity/`
+- `data/heating/`
+- `data/cooling/`
+
+Each sector has template tables. For example:
+
+- `powerplants.csv` (generators)
+- `storage_units.csv` (storage assets)
+- `electricity_demand.csv` or `heat_demand.csv` (demand series)
+- `res_profile.csv` (renewable profiles)
+- `scaled_inflows.csv` (hydro inflows)
+
+There are also shared tables:
+
+- `data/buses.csv`
+- `data/fuel_cost.csv`
+
+## Load a single sector
+
+```python
+from data_loaders.load_sector import load_sector
+
+system = load_sector(sector="electricity")
+print(system.sets.years)
+print(system.generators.unit[:5])
+```
+
+The loader uses default files under `data/electricity/`, validates them, and
+returns a `SystemParameters` object.
+
+## Load multiple sectors
+
+To load electricity + heating together, provide explicit paths:
+
+```python
+from data_loaders.load_system import load_system
+
+electricity_paths = {
+    "powerplants_path": "data/electricity/powerplants.csv",
+    "storage_path": "data/electricity/storage_units.csv",
+    "renewable_profiles_path": "data/electricity/res_profile.csv",
+    "inflow_path": "data/electricity/scaled_inflows.csv",
+    "electricity_demand_path": "data/electricity/electricity_demand.csv",
+}
+
+heating_paths = {
+    "powerplants_path": "data/heating/converters.csv",
+    "storage_path": "data/heating/storage_units.csv",
+    "efficiency_ts_path": "data/heating/COP.csv",
+    "heating_demand_path": "data/heating/heat_demand.csv",
+}
+
+system = load_system(
+    sectors=["electricity", "heating"],
+    electricity_paths=electricity_paths,
+    heating_paths=heating_paths,
+    buses_path="data/buses.csv",
+    fuel_cost_path="data/fuel_cost.csv",
+)
+```
+
+## Common issues
+
+1. **Wrong file names**: use the default names or pass explicit paths.
+2. **Missing columns**: start from the provided templates.
+3. **Mixed formats**: CSV/Parquet/Feather are supported; base names resolve automatically.
+
+## Project layout
+
+- `data_models`: Pydantic models for system data.
+- `data_loaders`: loader functions that build `SystemParameters`.
+- `data`: example input tables.
+- `docs`: documentation source files.
+
+## Next steps
+
+- Read the Tutorials section for step-by-step walkthroughs.
+- Check the API Reference to see every loader and model.
+- Use the example tables in `data/` to build your own dataset.

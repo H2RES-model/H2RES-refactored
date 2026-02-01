@@ -20,7 +20,11 @@ class Demand(BaseModel):
     p_t[(system, region, bus, carrier, period, year)] = value
     """
 
-    p_t: Dict[Tuple[System, Region, BusId, Carrier, P, Y], float] = Field(default_factory=dict)
+    p_t: Dict[Tuple[System, Region, BusId, Carrier, P, Y], float] = Field(
+        default_factory=dict,
+        description="Demand time series by (system, region, bus, carrier, period, year).",
+        json_schema_extra={"unit": "MWh/period", "status": "input"},
+    )
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 

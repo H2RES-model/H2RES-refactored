@@ -1,6 +1,6 @@
-sphinx>=7.0
-furo>=2024.0.0
-myst-parser>=2.0.0
+mkdocs>=1.6
+mkdocs-material>=9.5
+mkdocstrings[python]>=0.26
 pydantic>=2.0
 pandas>=2.0
 pyarrow>=10.0

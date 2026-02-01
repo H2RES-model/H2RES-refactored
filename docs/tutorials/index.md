@@ -1,9 +1,7 @@
 # Tutorials
 
-```{toctree}
-:maxdepth: 2
+Step-by-step guides that show how to work with H2RES inputs and loaders.
 
-quickstart
-loading_data
-extending
-```
+- [Quickstart](quickstart.md)
+- [Loading Data](loading_data.md)
+- [Extending](extending.md)

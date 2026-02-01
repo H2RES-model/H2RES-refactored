@@ -72,14 +72,35 @@ class SystemParameters(BaseModel):
       - policy     : policy and emissions-related parameters
     """
 
-    sets: SystemSets
-    bus: Bus
-    generators: Generators
-    storage: StorageUnits
-    demand: Demand
+    sets: SystemSets = Field(
+        description="Core index sets for the system.",
+        json_schema_extra={"unit": "n.a.", "status": "mandatory"},
+    )
+    bus: Bus = Field(
+        description="Network buses and carrier assignments.",
+        json_schema_extra={"unit": "n.a.", "status": "mandatory"},
+    )
+    generators: Generators = Field(
+        description="Power-converting units and converters.",
+        json_schema_extra={"unit": "n.a.", "status": "mandatory"},
+    )
+    storage: StorageUnits = Field(
+        description="Energy storage assets and parameters.",
+        json_schema_extra={"unit": "n.a.", "status": "mandatory"},
+    )
+    demand: Demand = Field(
+        description="Demand time series by carrier and bus.",
+        json_schema_extra={"unit": "n.a.", "status": "mandatory"},
+    )
 
     #TODO: Create Pydantic dataclasses and loader functions for market and policy parameters
-    market: MarketParams
-    policy:PolicyParams
+    market: MarketParams = Field(
+        description="Market and price-related parameters.",
+        json_schema_extra={"unit": "n.a.", "status": "optional"},
+    )
+    policy: PolicyParams = Field(
+        description="Policy and emissions-related parameters.",
+        json_schema_extra={"unit": "n.a.", "status": "optional"},
+    )
 
     model_config = ConfigDict(frozen=True, extra="forbid")

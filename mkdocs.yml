@@ -1,0 +1,73 @@
+site_name: H2RES Refactored
+site_description: Data model and loader pipeline for energy system inputs.
+site_url: ""
+repo_url: ""
+repo_name: ""
+
+theme:
+  name: material
+  language: en
+  features:
+    - navigation.tabs
+    - navigation.indexes
+    - navigation.top
+    - content.code.copy
+  palette:
+    - scheme: default
+      primary: teal
+      accent: teal
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
+    - scheme: slate
+      primary: teal
+      accent: teal
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light mode
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.highlight
+  - pymdownx.inlinehilite
+  - pymdownx.snippets:
+      base_path: docs
+      check_paths: true
+  - pymdownx.tabbed:
+      alternate_style: true
+
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          paths:
+            - .
+
+nav:
+  - Home: index.md
+  - Getting Started: getting_started.md
+  - Design Overview: design.md
+  - Components:
+      - components/index.md
+      - Buses: components/buses.md
+      - System Sets: components/system_sets.md
+      - Generators: components/generators.md
+      - Storage Units: components/storage_units.md
+      - Demand: components/demand.md
+      - System Parameters: components/system_parameters.md
+  - Tutorials:
+      - tutorials/index.md
+      - Quickstart: tutorials/quickstart.md
+      - Loading Data: tutorials/loading_data.md
+      - Extending: tutorials/extending.md
+  - API Reference:
+      - api/index.md
+      - Data Loaders: api/data_loaders.md
+      - Data Models: api/data_models.md
+      - Helpers: api/helpers.md
+  - FAQ: faq.md

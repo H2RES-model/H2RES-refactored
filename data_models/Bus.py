@@ -16,12 +16,36 @@ class Bus(BaseModel):
     Network buses with connected units and their carrier.
     """
 
-    name: List[BusId] = Field(default_factory=list, description="All buses in the system.")
-    system: Dict[BusId, SystemId] = Field(default_factory=dict, description="System/country tag for each bus.")
-    region: Dict[BusId, RegionId] = Field(default_factory=dict, description="Region/zone for each bus.")
-    carrier: Dict[BusId, Carrier] = Field(default_factory=dict, description="Carrier assigned to each bus.")
-    generators_at_bus: Dict[BusId, List[Unit]] = Field(default_factory=dict, description="Generator/converter units on each bus.")
-    storage_at_bus: Dict[BusId, List[Unit]] = Field(default_factory=dict, description="Storage units on each bus.")
+    name: List[BusId] = Field(
+        default_factory=list,
+        description="All buses in the system.",
+        json_schema_extra={"unit": "n.a.", "status": "optional"},
+    )
+    system: Dict[BusId, SystemId] = Field(
+        default_factory=dict,
+        description="System/country tag for each bus.",
+        json_schema_extra={"unit": "n.a.", "status": "optional"},
+    )
+    region: Dict[BusId, RegionId] = Field(
+        default_factory=dict,
+        description="Region/zone for each bus.",
+        json_schema_extra={"unit": "n.a.", "status": "optional"},
+    )
+    carrier: Dict[BusId, Carrier] = Field(
+        default_factory=dict,
+        description="Carrier assigned to each bus.",
+        json_schema_extra={"unit": "n.a.", "status": "optional"},
+    )
+    generators_at_bus: Dict[BusId, List[Unit]] = Field(
+        default_factory=dict,
+        description="Generator/converter units on each bus.",
+        json_schema_extra={"unit": "n.a.", "status": "optional"},
+    )
+    storage_at_bus: Dict[BusId, List[Unit]] = Field(
+        default_factory=dict,
+        description="Storage units on each bus.",
+        json_schema_extra={"unit": "n.a.", "status": "optional"},
+    )
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
