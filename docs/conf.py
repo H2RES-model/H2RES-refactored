@@ -12,6 +12,7 @@ extensions = [
     "sphinx.ext.napoleon",
     "sphinx.ext.autosectionlabel",
     "sphinx.ext.viewcode",
+    "myst_parser",
 ]
 
 autosummary_generate = True
@@ -29,6 +30,10 @@ autosectionlabel_prefix_document = True
 
 templates_path = ["_templates"]
 exclude_patterns = ["_build", "Thumbs.db", ".DS_Store"]
+
+source_suffix = {
+    ".md": "markdown",
+}
 
 html_theme = "furo"
 html_static_path = ["_static"]
