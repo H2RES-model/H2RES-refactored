@@ -8,7 +8,8 @@ import pandas as pd
 from data_models.SystemSets import SystemSets
 from data_models.Bus import Bus
 from data_loaders.helpers.defaults import default_carrier, default_electric_bus
-from data_loaders.helpers.io import read_columns, read_table
+from data_loaders.helpers.io import TableCache, read_columns, read_table
+from data_loaders.helpers.model_factory import build_model
 
 def load_bus(
     powerplants_path: str,
@@ -21,6 +22,7 @@ def load_bus(
     sector: Optional[str] = None,
     sets: SystemSets,
     existing_buses: Optional[Bus] = None,
+    table_cache: Optional[TableCache] = None,
 ) -> Bus:
     """Build a Bus model from templates, powerplants, and demand headers.
 
@@ -58,15 +60,28 @@ def load_bus(
         raise ValueError(f"Unknown sector '{sector}'. Expected one of: {sorted(sector_carrier_map)}")
     sector_carrier = sector_carrier_map.get(sector_key) if sector_key else None
 
-    df_pp = read_table(powerplants_path)
-    df_storage = read_table(storage_path)
+    pp_cols_available = set(read_columns(powerplants_path, cache=table_cache))
+    pp_cols = [
+        c
+        for c in ("name", "tech", "bus_out", "carrier_out", "bus_out_2", "carrier_out_2", "chp_type")
+        if c in pp_cols_available
+    ]
+    df_pp = read_table(powerplants_path, columns=pp_cols or None, cache=table_cache)
+
+    st_cols_available = set(read_columns(storage_path, cache=table_cache))
+    st_cols = [
+        c
+        for c in ("name", "unit_name", "bus_out", "bus", "carrier_out", "carrier")
+        if c in st_cols_available
+    ]
+    df_storage = read_table(storage_path, columns=st_cols or None, cache=table_cache)
 
     # Filter to known units
     units_set = set(sets.units)
     storage_units_set = set(getattr(sets, "storage_units", []))
 
-    df_pp = df_pp[df_pp["name"].isin(units_set)].copy()
-    df_storage = df_storage[df_storage["name"].isin(storage_units_set)].copy() if "name" in df_storage.columns else df_storage
+    df_pp = df_pp[df_pp["name"].isin(units_set)]
+    df_storage = df_storage[df_storage["name"].isin(storage_units_set)] if "name" in df_storage.columns else df_storage
 
     # Start from existing bus object (if any) so repeated calls only append.
     bus_names = set(existing_buses.name) if existing_buses else set()
@@ -114,19 +129,25 @@ def load_bus(
         Raises:
             ValueError: If the provided carrier/system/region conflicts with existing mappings.
         """
+        bus = str(bus).strip()
         if carrier is None or carrier == "":
             carrier = default_carrier_value
+        carrier = str(carrier).strip()
         if not _carrier_allowed(carrier):
             return
         bus_names.add(bus)
-        if bus in carrier_map and carrier_map[bus] != carrier:
+        if bus in carrier_map and str(carrier_map[bus]).strip().lower() != carrier.lower():
+            if existing_buses is not None:
+                return
             raise ValueError(f"Inconsistent carrier for bus '{bus}'")
         carrier_map.setdefault(bus, carrier)
         if system is not None:
+            system = str(system).strip()
             if bus in system_map and system_map[bus] != system:
                 raise ValueError(f"Inconsistent system for bus '{bus}'")
             system_map.setdefault(bus, system)
         if region is not None:
+            region = str(region).strip()
             if bus in region_map and region_map[bus] != region:
                 raise ValueError(f"Inconsistent region for bus '{bus}'")
             region_map.setdefault(bus, region)
@@ -141,44 +162,53 @@ def load_bus(
         _add_bus(bus, carrier)
         if not _carrier_allowed(carrier):
             return
+        if bus in carrier_map and str(carrier_map[bus]).strip().lower() != str(carrier).strip().lower():
+            return
         items = target.setdefault(bus, [])
         if unit not in items:
             items.append(unit)
 
     # Buses explicitly listed in buses.csv (if provided)
     if buses_path:
-        df_buses = read_table(buses_path)
+        bus_cols_available = set(read_columns(buses_path, cache=table_cache))
+        bus_cols = [c for c in ("bus", "carrier", "system", "region") if c in bus_cols_available]
+        df_buses = read_table(buses_path, columns=bus_cols or None, cache=table_cache)
         required = {"bus", "carrier"}
         missing = required - set(df_buses.columns)
         if missing:
             raise ValueError(f"{buses_path} is missing required columns: {sorted(missing)}")
-        for _, row in df_buses.iterrows():
-            bus = str(row["bus"])
+        has_system = "system" in df_buses.columns
+        has_region = "region" in df_buses.columns
+        for row in df_buses.itertuples(index=False):
+            bus = str(getattr(row, "bus", ""))
             if not bus:
                 continue
+            carrier_raw = getattr(row, "carrier", default_carrier_value)
+            system_raw = getattr(row, "system", None) if has_system else None
+            region_raw = getattr(row, "region", None) if has_region else None
             _add_bus(
                 bus=bus,
-                carrier=str(row.get("carrier", default_carrier_value) or default_carrier_value),
-                system=str(row["system"]) if "system" in row and pd.notna(row["system"]) else None,
-                region=str(row["region"]) if "region" in row and pd.notna(row["region"]) else None,
+                carrier=str(carrier_raw or default_carrier_value),
+                system=str(system_raw) if pd.notna(system_raw) else None,
+                region=str(region_raw) if pd.notna(region_raw) else None,
             )
 
     # Generators/converters
-    for _, row in df_pp.iterrows():
-        name = str(row["name"])
-        tech = str(row.get("tech", "")).upper()
+    for row in df_pp.itertuples(index=False):
+        name = str(getattr(row, "name", ""))
+        tech = str(getattr(row, "tech", "")).upper()
 
-        bus_out = str(row.get("bus_out", default_bus_value))
-        carrier_out = str(row.get("carrier_out", default_carrier_value))
+        bus_out = str(getattr(row, "bus_out", default_bus_value))
+        carrier_out = str(getattr(row, "carrier_out", default_carrier_value))
         _assign_unit(bus_out, carrier_out, name, bus_units)
 
         # Secondary output bus/carrier (e.g., CHP heat)
         if sector_carrier and carrier_out.strip().lower() != sector_carrier:
             continue
-        bus_out_2_val = row.get("bus_out_2", None)
+        bus_out_2_val = getattr(row, "bus_out_2", None)
         if pd.notna(bus_out_2_val) and str(bus_out_2_val).strip() != "":
             bus2 = str(bus_out_2_val)
-            carrier2 = str(row.get("carrier_out_2", carrier_out))
+            carrier2 = str(getattr(row, "carrier_out_2", carrier_out))
             _assign_unit(bus2, carrier2, name, bus_units)
 
         # Hydro storage sits on the generator's bus_out
@@ -186,17 +216,17 @@ def load_bus(
             _assign_unit(bus_out, carrier_out, name, bus_storage)
 
         # CHP TES located at bus_out_2 if present
-        chp_type = str(row.get("chp_type", "")).upper()
+        chp_type = str(getattr(row, "chp_type", "")).upper()
         if chp_type and chp_type != "N" and pd.notna(bus_out_2_val) and str(bus_out_2_val).strip() != "":
             tes_bus = str(bus_out_2_val)
-            tes_carrier = str(row.get("carrier_out_2", carrier_out))
+            tes_carrier = str(getattr(row, "carrier_out_2", carrier_out))
             _assign_unit(tes_bus, tes_carrier, name, bus_storage)
 
     # Storage
-    for _, row in df_storage.iterrows():
-        bus_out = str(row.get("bus_out", row.get("bus", default_bus_value)))
-        carrier = str(row.get("carrier_out", row.get("carrier", default_carrier_value)))
-        name = str(row.get("name", row.get("unit_name", "")))
+    for row in df_storage.itertuples(index=False):
+        bus_out = str(getattr(row, "bus_out", getattr(row, "bus", default_bus_value)))
+        carrier = str(getattr(row, "carrier_out", getattr(row, "carrier", default_carrier_value)))
+        name = str(getattr(row, "name", getattr(row, "unit_name", "")))
         if not name:
             continue
         _assign_unit(bus_out, carrier, name, bus_storage)
@@ -205,7 +235,7 @@ def load_bus(
     def _add_demand_buses(csv_path: Optional[str], carrier: str):
         if not csv_path:
             return
-        columns = read_columns(csv_path)
+        columns = read_columns(csv_path, cache=table_cache)
         if not {"year", "period"}.issubset(columns):
             raise ValueError(f"{csv_path} missing 'year'/'period' columns for demand bus discovery.")
         demand_cols = [c for c in columns if c not in {"year", "period"}]
@@ -222,7 +252,8 @@ def load_bus(
     for b in bus_names_sorted:
         carrier_map.setdefault(b, default_carrier_value)
 
-    return Bus(
+    return build_model(
+        Bus,
         name=bus_names_sorted,
         system=system_map,
         region=region_map,
