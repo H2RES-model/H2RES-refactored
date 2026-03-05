@@ -1,0 +1,17 @@
+column_name                       transport_params_equivalent
+
+
+e_nom                            = fleet_units * average_bat   / 1000
+e_nom_max                        = e_nom
+e_min                            = ev_sto_min * e_nom
+duration_charge                  = average_bat / average_ch_rate
+duration_discharge               = average_bat / average_ch_rate
+efficiency_charge                = ev_grid_eff
+efficiency_discharge             = ev_grid_eff
+standby_loss                     = 0
+capital_cost_energy              = 0
+capital_cost_power_charge        = 0
+capital_cost_power_discharge     = V2G_cost
+lifetime                         = 0
+spillage_cost                    = 0
+
