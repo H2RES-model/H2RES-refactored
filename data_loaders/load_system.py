@@ -4,7 +4,6 @@ from pathlib import Path
 from typing import Dict, Iterable, Optional, Union
 
 from data_loaders.load_sector import load_sector
-from data_loaders.helpers.io import TableCache
 
 PathLike = Union[str, Path]
 
@@ -14,9 +13,10 @@ def load_system(
     electricity_paths: Dict[str, PathLike],
     heating_paths: Optional[Dict[str, PathLike]] = None,
     cooling_paths: Optional[Dict[str, PathLike]] = None,
+    industry_paths: Optional[Dict[str, PathLike]] = None,
+
     buses_path: Optional[PathLike] = None,
     fuel_cost_path: Optional[PathLike] = None,
-    table_cache: Optional[TableCache] = None,
 ) -> object:
     """Load system parameters for one or more sectors.
 
@@ -88,8 +88,7 @@ def load_system(
     electricity_kwargs = _coerce_paths(electricity_paths)
     heating_kwargs = _coerce_paths(heating_paths)
     cooling_kwargs = _coerce_paths(cooling_paths)
-
-    cache = table_cache if table_cache is not None else {}
+    industry_kwargs = _coerce_paths(industry_paths)
 
     system = None
     for sector in ordered:
@@ -106,7 +105,14 @@ def load_system(
                 raise ValueError("cooling_paths must be provided when loading cooling sector.")
             kwargs = dict(cooling_kwargs)
             kwargs["sector"] = "cooling"
-        elif sector in {"industry", "transport"}:
+        elif sector == "industry":
+            if not industry_kwargs:
+                raise ValueError("industry_paths must be provided when loading industry sector.")
+            kwargs = dict(industry_kwargs)
+            kwargs["sector"] = "industry"
+
+
+        elif sector in {"transport"}:
             raise NotImplementedError(f"{sector} not supported by load_sector yet.")
         else:
             raise ValueError(f"Unhandled sector: {sector}")
@@ -118,7 +124,6 @@ def load_system(
 
         if system is not None:
             kwargs["existing_system"] = system # type: ignore error
-        kwargs["table_cache"] = cache
 
         system = load_sector(**kwargs) # type: ignore error
 
