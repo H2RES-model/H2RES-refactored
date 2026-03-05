@@ -17,6 +17,8 @@ from data_models.SystemParameters import (
     PolicyParams,
     SystemParameters,
 )
+from data_loaders.helpers.io import TableCache
+from data_loaders.helpers.model_factory import build_model
 from data_loaders.load_sets import load_sets
 from data_loaders.load_generators import load_generators
 from data_loaders.load_storage import load_storage
@@ -35,10 +37,10 @@ def load_sector(
     electricity_demand_path: Optional[str] = None,
     heating_demand_path: Optional[str] = None,
     cooling_demand_path: Optional[str] = None,
-    industry_demand_path: Optional[str] = None,  # <-- NEW
     inflow_path: Optional[str] = None,
     sector: Optional[str] = None,
     existing_system: Optional[SystemParameters] = None,
+    table_cache: Optional[TableCache] = None,
 ) -> SystemParameters:
     """Assemble SystemParameters for a single sector.
 
@@ -76,7 +78,6 @@ def load_sector(
         "electricity": "electricity",
         "heating": "heating",
         "cooling": "cooling",
-        "industry": "industry",
     }
     sector_key = sector.strip().lower() if sector else None
     if sector_key and sector_key not in sector_map:
@@ -101,10 +102,7 @@ def load_sector(
             heating_demand_path = heating_demand_path or os.path.join(base_dir, "heat_demand.csv")
         elif sector_key == "cooling":
             cooling_demand_path = cooling_demand_path or os.path.join(base_dir, "cooling_demand.csv")
-        elif sector_key == "industry":
-            powerplants_path = powerplants_path or os.path.join(base_dir, "converters.csv")
-            storage_path = storage_path or os.path.join(base_dir, "storage_units.csv")
-            industry_demand_path = industry_demand_path or os.path.join(base_dir, "industry_demand.csv")
+
     if existing_system is None:
         required = {
             "powerplants_path": powerplants_path,
@@ -116,7 +114,7 @@ def load_sector(
         missing = [name for name, val in required.items() if not val]
         if missing:
             raise ValueError(f"Missing required inputs for initial load: {missing}")
-        if not (electricity_demand_path or heating_demand_path or cooling_demand_path or industry_demand_path):
+        if not (electricity_demand_path or heating_demand_path or cooling_demand_path):
             raise ValueError("At least one demand CSV path is required for initial load.")
 
     # --------------------------------------------------------------
@@ -138,13 +136,14 @@ def load_sector(
             buses_path=buses_path,
             storage_path=storage_path,
             existing_sets=existing_system.sets if existing_system else None,
+            table_cache=table_cache,
         )
 
     # --------------------------------------------------------------
     # 2. Buses (uses demand headers + csv templates)
     # --------------------------------------------------------------
     if existing_system and not any(
-        [powerplants_path, storage_path, electricity_demand_path, heating_demand_path, cooling_demand_path, industry_demand_path]
+        [powerplants_path, storage_path, electricity_demand_path, heating_demand_path, cooling_demand_path]
     ):
         buses = existing_system.bus
     else:
@@ -159,10 +158,10 @@ def load_sector(
             electricity_demand_path=electricity_demand_path,
             heating_demand_path=heating_demand_path,
             cooling_demand_path=cooling_demand_path,
-            industry_demand_path=industry_demand_path,
             sector=sector,
             sets=sets,
             existing_buses=existing_system.bus if existing_system else None,
+            table_cache=table_cache,
         )
 
     # --------------------------------------------------------------
@@ -181,6 +180,7 @@ def load_sector(
             sets=sets,
             buses=buses,
             existing_generators=existing_system.generators if existing_system else None,
+            table_cache=table_cache,
         )
 
     # --------------------------------------------------------------
@@ -199,6 +199,7 @@ def load_sector(
             sets=sets,
             buses=buses,
             existing_storage=existing_system.storage if existing_system else None,
+            table_cache=table_cache,
         )
 
     # --------------------------------------------------------------
@@ -207,26 +208,18 @@ def load_sector(
     demand_electricity_path = electricity_demand_path
     demand_heating_path = heating_demand_path
     demand_cooling_path = cooling_demand_path
-    demand_industry_path = industry_demand_path
     if sector_key == "electricity":
         demand_heating_path = None
         demand_cooling_path = None
-        demand_industry_path = None
-
     elif sector_key == "heating":
         demand_electricity_path = None
         demand_cooling_path = None
-        demand_industry_path = None
     elif sector_key == "cooling":
         demand_electricity_path = None
         demand_heating_path = None
-        demand_industry_path = None
-    elif sector_key == "industry":
-        demand_electricity_path = None
-        demand_heating_path = None
-        demand_cooling_path = None
+
     if existing_system and not any(
-        [demand_electricity_path, demand_heating_path, demand_cooling_path, demand_industry_path]
+        [demand_electricity_path, demand_heating_path, demand_cooling_path]
     ):
         demand = existing_system.demand
     else:
@@ -235,9 +228,9 @@ def load_sector(
             electricity_path=demand_electricity_path or None, # type: ignore
             heating_path=demand_heating_path or None,
             cooling_path=demand_cooling_path or None,
-            industry_path=demand_industry_path or None,
             buses=buses,
             existing_demand=existing_system.demand if existing_system else None,
+            table_cache=table_cache,
         )
 
     # --------------------------------------------------------------
@@ -266,7 +259,8 @@ def load_sector(
     # --------------------------------------------------------------
     # 8. Assemble and return central SystemParameters dataclass
     # --------------------------------------------------------------
-    return SystemParameters(
+    return build_model(
+        SystemParameters,
         sets=sets,
         bus = buses,
         generators=generators,
