@@ -164,10 +164,10 @@ def load_sector(
             electricity_demand_path=electricity_demand_path,
             heating_demand_path=heating_demand_path,
             cooling_demand_path=cooling_demand_path,
+            industry_demand_path=industry_demand_path,
             sector=sector,
             sets=sets,
             existing_buses=existing_system.bus if existing_system else None,
-            table_cache=table_cache,
         )
 
     # --------------------------------------------------------------
