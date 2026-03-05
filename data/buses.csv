@@ -10,3 +10,8 @@ HR,HR,HR_IND,heat
 HR,HR,HR_General_heating,heat
 HR,HR,HR_General_cooling,cooling
 HR,HR,HR_H2,hydrogen
+HR,HR,IND_HR_1,industry_heat
+HR,HR,HR_GAS,gas
+HR,HR,HR_OIL,oil
+HR,HR,HR_BIOMASS,biomass
+HR,HR,IND_HR_1_sto_out,industry_heat

@@ -20,20 +20,13 @@ def resolve_table_path(path: PathLike) -> Path:
         alt = p.with_suffix(".parquet" if suffix == ".csv" else ".csv")
         if alt.exists():
             return alt
-    if suffix in {".xlsx", ".xls", ".xlsm"}:
-        for ext in (".xlsx", ".xlsm", ".xls"):
-            if ext == suffix:
-                continue
-            alt = p.with_suffix(ext)
-            if alt.exists():
-                return alt
     if suffix == "":
-        for ext in (".csv", ".parquet", ".feather", ".xlsx", ".xlsm", ".xls"):
+        for ext in (".csv", ".parquet", ".feather"):
             alt = p.with_suffix(ext)
             if alt.exists():
                 return alt
 
-    raise FileNotFoundError(f"Could not find data file for '{path}' (csv/parquet/feather/excel).")
+    raise FileNotFoundError(f"Could not find data file for '{path}' (csv/parquet).")
 
 
 def read_table(path: PathLike, *, nrows: Optional[int] = None) -> pd.DataFrame:
@@ -41,8 +34,6 @@ def read_table(path: PathLike, *, nrows: Optional[int] = None) -> pd.DataFrame:
     suffix = resolved.suffix.lower()
     if suffix == ".csv":
         return pd.read_csv(resolved, nrows=nrows)
-    if suffix in {".xlsx", ".xls", ".xlsm"}:
-        return pd.read_excel(resolved, nrows=nrows)
     if suffix == ".parquet":
         return pd.read_parquet(resolved)
     if suffix == ".feather":
@@ -55,8 +46,6 @@ def read_columns(path: PathLike) -> List[str]:
     suffix = resolved.suffix.lower()
     if suffix == ".csv":
         return list(pd.read_csv(resolved, nrows=0).columns)
-    if suffix in {".xlsx", ".xls", ".xlsm"}:
-        return list(pd.read_excel(resolved, nrows=0).columns)
     if suffix == ".parquet":
         try:
             import pyarrow.parquet as pq  # type: ignore

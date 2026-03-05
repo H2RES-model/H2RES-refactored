@@ -7,8 +7,6 @@ from typing import Dict, Optional, Literal, cast, Hashable, TypeVar, Tuple
 from data_models.SystemSets import SystemSets
 from data_models.Generators import Generators
 from data_models.Bus import Bus
-from data_loaders.helpers.io import TableCache
-from data_loaders.helpers.model_factory import build_model
 from data_loaders.load_generators_static import load_generators_static
 from data_loaders.load_generators_ts import load_generators_ts
 
@@ -26,7 +24,6 @@ def load_generators(
     fuel_cost_path: Optional[str] = None,
     efficiency_ts_path: Optional[str] = None,
     existing_generators: Optional[Generators] = None,
-    table_cache: Optional[TableCache] = None,
 ) -> Generators:
     """Load generator parameters and time series into a Generators model.
 
@@ -59,13 +56,11 @@ def load_generators(
         powerplants_path=powerplants_path,
         sets=sets,
         buses=buses,
-        table_cache=table_cache,
     )
 
     units = cast(list, static.get("units", []))
     if not units:
-        return existing_generators or build_model(
-            Generators,
+        return existing_generators or Generators(
             unit=[],
             system={},
             region={},
@@ -111,7 +106,6 @@ def load_generators(
         var_cost_no_fuel=cast(Dict[str, float], static.get("var_cost_no_fuel", {})),
         efficiency=cast(Dict[str, float], static.get("efficiency", {})),
         buses=buses,
-        table_cache=table_cache,
     )
 
     ex = existing_generators
@@ -231,8 +225,7 @@ def load_generators(
         cast(Dict[UPY, float], ts.get("efficiency_ts", {})),
     )
 
-    return build_model(
-        Generators,
+    return Generators(
         unit=unit,
         system=system,
         region=region,

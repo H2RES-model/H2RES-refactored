@@ -8,7 +8,6 @@ import pandas as pd
 from data_models.SystemSets import SystemSets
 from data_loaders.helpers.io import read_table
 from data_loaders.helpers.iter_utils import union_lists
-from data_loaders.helpers.transport_utils import _is_electric_transport_tech
 
 def load_sets(
     powerplants_path: str,
@@ -16,7 +15,6 @@ def load_sets(
     fuel_cost_path: Optional[str] = None,
     buses_path: Optional[str] = None,
     storage_path: Optional[str] = None,
-    transport_zones_path: Optional[str] = None,
     existing_sets: Optional[SystemSets] = None,
 ) -> SystemSets:
     """Load SystemSets from core input tables.
@@ -50,7 +48,6 @@ def load_sets(
     df_fc = read_table(fuel_cost_path) if fuel_cost_path else None
     df_buses = read_table(buses_path) if buses_path else None
     df_storage = read_table(storage_path) if storage_path else None
-    df_transport = read_table(transport_zones_path) if transport_zones_path else None
 
     # --------------------------------------------------------------
     # 2. Basic validation of required columns
@@ -105,14 +102,6 @@ def load_sets(
         if "name" not in df_storage.columns:
             raise ValueError(
                 f"Missing required column 'name' in storage file ({storage_path})"
-            )
-    if df_transport is not None:
-        required_transport_cols = {"transport_sector_bus", "tech", "fuel_type"}
-        missing_t = required_transport_cols - set(df_transport.columns)
-        if missing_t:
-            raise ValueError(
-                f"Missing required columns in transport zones file ({transport_zones_path}): "
-                f"{sorted(missing_t)}"
             )
 
     # --------------------------------------------------------------
@@ -182,24 +171,6 @@ def load_sets(
     storage_template_units: List[str] = []
     if df_storage is not None and "name" in df_storage.columns:
         storage_template_units = df_storage["name"].dropna().astype(str).tolist()
-
-    if df_transport is not None:
-        # Transport params may come in either name/unit_name and only active electric
-        # rows should be injected as storage units.
-        if "tech" in df_transport.columns:
-            mask_storage = df_transport["tech"].map(_is_electric_transport_tech)
-            df_transport = df_transport[mask_storage].copy()
-        if "name" not in df_transport.columns:
-            df_transport["name"] = (
-                df_transport["transport_sector_bus"].astype(str).str.strip()
-                + "_"
-                + df_transport["tech"].astype(str).str.strip()
-                + "_"
-                + df_transport["fuel_type"].astype(str).str.strip()
-            )
-        if "name" in df_transport.columns:
-            storage_template_units += df_transport["name"].dropna().astype(str).tolist()
-
     storage_units_new: List[str] = sorted(set(hydro_storage_units) | set(storage_template_units))
     storage_units = sorted(set(union_lists(storage_units_new, getattr(existing_sets, "storage_units", []))))
     battery_units = sorted(set(getattr(existing_sets, "battery_units", [])))

@@ -9,7 +9,6 @@ from data_models.SystemSets import SystemSets
 from data_models.Bus import Bus
 from data_loaders.helpers.defaults import default_carrier, default_electric_bus
 from data_loaders.helpers.io import read_columns, read_table
-from data_loaders.helpers.transport_utils import _is_electric_transport_tech
 
 def load_bus(
     powerplants_path: str,
@@ -18,7 +17,8 @@ def load_bus(
     electricity_demand_path: Optional[str] = None,
     heating_demand_path: Optional[str] = None,
     cooling_demand_path: Optional[str] = None,
-    transport_zones_path: Optional[str] = None,
+    industry_demand_path: Optional[str] = None,
+
     *,
     sector: Optional[str] = None,
     sets: SystemSets,
@@ -35,7 +35,6 @@ def load_bus(
         electricity_demand_path: Optional electricity demand file (for bus discovery).
         heating_demand_path: Optional heating demand file (for bus discovery).
         cooling_demand_path: Optional cooling demand file (for bus discovery).
-        transport_zones_path: Optional transport zones input for bus discovery.
         sector: Sector name for filtering carriers.
         sets: SystemSets containing known units and carriers.
         existing_buses: Existing Bus model to merge into (existing wins).
@@ -55,7 +54,9 @@ def load_bus(
         "electricity": "electricity",
         "heating": "heat",
         "cooling": "cooling",
+        "industry": "industry_heat",   # <-- CHANGED (separate from heat)
     }
+
     sector_key = sector.strip().lower() if sector else None
     if sector_key and sector_key not in sector_carrier_map:
         raise ValueError(f"Unknown sector '{sector}'. Expected one of: {sorted(sector_carrier_map)}")
@@ -148,8 +149,6 @@ def load_bus(
         if unit not in items:
             items.append(unit)
 
-    known_buses_file: Optional[set[str]] = None
-
     # Buses explicitly listed in buses.csv (if provided)
     if buses_path:
         df_buses = read_table(buses_path)
@@ -157,7 +156,6 @@ def load_bus(
         missing = required - set(df_buses.columns)
         if missing:
             raise ValueError(f"{buses_path} is missing required columns: {sorted(missing)}")
-        known_buses_file = set(df_buses["bus"].astype(str).str.strip().str.lower())
         for _, row in df_buses.iterrows():
             bus = str(row["bus"])
             if not bus:
@@ -222,43 +220,7 @@ def load_bus(
     _add_demand_buses(electricity_demand_path, "electricity")
     _add_demand_buses(heating_demand_path, "heat")
     _add_demand_buses(cooling_demand_path, "cooling")
-
-    # Transport buses (from zones input)
-    if transport_zones_path:
-        df_tp = read_table(transport_zones_path)
-        if not df_tp.empty:
-            required_tp = {"transport_sector_bus", "tech", "fuel_type"}
-            missing_tp = required_tp - set(df_tp.columns)
-            if missing_tp:
-                raise ValueError(
-                    f"Missing required columns in transport zones file ({transport_zones_path}): "
-                    f"{sorted(missing_tp)}"
-                )
-            if "bus_in" not in df_tp.columns:
-                raise ValueError(
-                    f"Missing required column 'bus_in' in transport zones file ({transport_zones_path})."
-                )
-            if "tech" in df_tp.columns:
-                df_tp = df_tp[df_tp["tech"].map(_is_electric_transport_tech)].copy()
-            for _, row in df_tp.iterrows():
-                name = (
-                    str(row.get("name", "")).strip()
-                    or f"{row.get('transport_sector_bus')}_{row.get('tech')}_{row.get('fuel_type')}"
-                )
-                bus_in = str(row.get("bus_in", "")).strip()
-                if not bus_in:
-                    raise ValueError(
-                        f"{transport_zones_path} missing bus_in for transport unit '{name}'."
-                    )
-                if known_buses_file is not None and bus_in.strip().lower() not in known_buses_file:
-                    excel_row = int(row.name) + 2 if isinstance(row.name, (int, float)) else None
-                    line_txt = f", row {excel_row}" if excel_row is not None else ""
-                    raise ValueError(
-                        f"{transport_zones_path}{line_txt}: bus_in '{bus_in}' not found in data/buses.csv"
-                    )
-                carrier_val = carrier_map.get(bus_in, default_carrier_value)
-                if name and bus_in:
-                    _assign_unit(bus_in, carrier_val, name, bus_storage)
+    _add_demand_buses(industry_demand_path, "industry_heat")  # <-- CHANGED
 
     # Finalize
     bus_names_sorted = sorted(bus_names)

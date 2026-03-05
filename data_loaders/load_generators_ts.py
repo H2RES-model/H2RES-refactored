@@ -3,13 +3,13 @@
 from __future__ import annotations
 
 from typing import Dict, Optional, Tuple, cast, List
+import gc
 import math
-import numpy as np
 import pandas as pd
 
 from data_models.SystemSets import SystemSets
 from data_models.Bus import Bus
-from data_loaders.helpers.io import TableCache, read_columns, read_table, resolve_table_path
+from data_loaders.helpers.io import read_table, resolve_table_path
 from data_loaders.helpers.pandas_utils import stack_compat
 
 UPY = Tuple[str, int, int]  # (unit, period, year)
@@ -26,7 +26,6 @@ def load_generators_ts(
     var_cost_no_fuel: Optional[Dict[str, float]] = None,
     efficiency: Optional[Dict[str, float]] = None,
     buses: Optional[Bus] = None,
-    table_cache: Optional[TableCache] = None,
 ) -> Dict[str, Dict[UPY, float]]:
     """Load generator time series for profiles, variable costs, and efficiencies.
 
@@ -84,7 +83,7 @@ def load_generators_ts(
         ) -> Dict[str, Dict[str, str]]:
             meta: Dict[str, Dict[str, str]] = {}
             col_names = ["" if pd.isna(c) else str(c).strip() for c in columns]
-            for row in df_meta.itertuples(index=False, name=None):
+            for _, row in df_meta.iterrows():
                 label = None
                 label_idx = None
                 for i, cell in enumerate(row):
@@ -101,7 +100,7 @@ def load_generators_ts(
                     unit_name = col_names[j]
                     if unit_name in {"year", "period", ""}:
                         continue
-                    cell_val = row[j]
+                    cell_val = row.iloc[j]
                     if pd.notna(cell_val) and str(cell_val).strip() != "":
                         mapping[unit_name] = str(cell_val).strip()
                 if mapping:
@@ -121,7 +120,7 @@ def load_generators_ts(
                 df.columns = header
                 meta = _parse_meta_rows(df_raw.iloc[:header_row], header)
         else:
-            df = read_table(resolved, cache=table_cache)
+            df = read_table(resolved)
 
         for col in ("year", "period"):
             if col not in df.columns:
@@ -192,14 +191,14 @@ def load_generators_ts(
 
     p_t: Dict[UPY, float] = {}
     if renewable_profiles_path is not None:
-        profile_cols_available = set(read_columns(renewable_profiles_path, cache=table_cache))
-        requested_profile_cols = ["year", "period"] + [u for u in units if u in profile_cols_available]
-        df_ts = read_table(renewable_profiles_path, columns=requested_profile_cols, cache=table_cache)
+        df_ts = read_table(renewable_profiles_path)
         for col in ("year", "period"):
             if col not in df_ts.columns:
                 raise ValueError(f"{renewable_profiles_path} missing column '{col}'")
 
-        df_ts = df_ts[df_ts["year"].isin(sets.years) & df_ts["period"].isin(sets.periods)]
+        df_ts = df_ts[
+            df_ts["year"].isin(sets.years) & df_ts["period"].isin(sets.periods)
+        ].copy()
 
         profile_cols = [c for c in df_ts.columns if c in units]
         if profile_cols:
@@ -209,34 +208,27 @@ def load_generators_ts(
                 year, period, unit = idx  # type: ignore
                 p_t[(str(unit), int(period), int(year))] = float(val)
             del stacked
+        del df_ts
+        gc.collect()
 
     var_cost: Dict[UPY, float] = {}
     if fuel_cost_path is not None:
         if fuel is None or var_cost_no_fuel is None or efficiency is None:
             raise ValueError("fuel, var_cost_no_fuel, and efficiency are required for fuel cost loading.")
 
-        fc_cols_list = read_columns(fuel_cost_path, cache=table_cache)
-        fc_col_by_lower = {str(c).strip().lower(): str(c) for c in fc_cols_list}
-        used_fuels = {str(fuel[u]).strip().lower() for u in units}
-        requested_fc_cols = ["year", "period"] + [
-            fc_col_by_lower[f] for f in used_fuels if f in fc_col_by_lower
-        ]
-        df_fc = read_table(fuel_cost_path, columns=requested_fc_cols, cache=table_cache)
+        df_fc = read_table(fuel_cost_path)
         for col in ("year", "period"):
             if col not in df_fc.columns:
                 raise ValueError(f"{fuel_cost_path} missing column '{col}'")
 
-        df_fc = df_fc[df_fc["year"].isin(sets.years) & df_fc["period"].isin(sets.periods)]
+        df_fc = df_fc[
+            df_fc["year"].isin(sets.years) & df_fc["period"].isin(sets.periods)
+        ].copy()
 
         id_vars = ["year", "period"]
         fuel_cols = [c for c in df_fc.columns if c not in id_vars]
         if not fuel_cols:
-            all_electric_units = all(
-                str(fuel[u]).strip().lower() == "electricity"
-                for u in units
-            )
-            if not all_electric_units:
-                raise ValueError(f"{fuel_cost_path} has no fuel columns.")
+            raise ValueError(f"{fuel_cost_path} has no fuel columns.")
 
         # Precompute per-unit inputs and fuel groupings.
         unit_fuel = {u: str(fuel[u]) for u in units}
@@ -298,22 +290,13 @@ def load_generators_ts(
         if elec_units:
             years = df_fc["year"].astype(int).to_numpy()
             periods = df_fc["period"].astype(int).to_numpy()
-            n_t = len(years)
-            n_u = len(elec_units)
-            if n_t > 0 and n_u > 0:
-                units_arr = np.repeat(np.asarray(elec_units, dtype=object), n_t)
-                years_arr = np.tile(years, n_u)
-                periods_arr = np.tile(periods, n_u)
-                vc_arr = np.repeat(
-                    np.asarray([unit_var_cost_no_fuel[u] for u in elec_units], dtype=float),
-                    n_t,
-                )
-                var_cost.update(
-                    {
-                        (str(u), int(p), int(y)): float(vc)
-                        for u, p, y, vc in zip(units_arr, periods_arr, years_arr, vc_arr)
-                    }
-                )
+            for u in elec_units:
+                vc = unit_var_cost_no_fuel[u]
+                for y, p in zip(years, periods):
+                    var_cost[(u, int(p), int(y))] = vc
+
+        del df_fc, df_units
+        gc.collect()
 
     efficiency_ts: Dict[UPY, float] = {}
     if efficiency_ts_path is not None:

@@ -41,34 +41,28 @@ class Generators(BaseModel):
     # Index & classification
     # -----------------------------------------------------------
     unit: List[U] = Field(
-        json_schema_extra={"unit": "n.a.", "status": "mandatory"},
         description="All generator / converter units in the system."
     )
 
     system: Dict[U, str] = Field(
-        json_schema_extra={"unit": "n.a.", "status": "optional"},
         default_factory=dict,
         description="System/scenario tag (column 'system' in powerplants.csv), e.g. country code.",
     )
 
     region: Dict[U, str] = Field(
-        json_schema_extra={"unit": "n.a.", "status": "optional"},
         default_factory=dict,
         description="Region/zone for the unit (column 'region' in powerplants.csv).",
     )
 
     tech: Dict[U, str] = Field(
-        json_schema_extra={"unit": "n.a.", "status": "mandatory"},
         description="Technology label (e.g. 'CCGT', 'WindPP', 'PV', 'CHP', 'HDAM_turbine', 'HPHS_pump')."
     )
 
     fuel: Dict[U, Fuel] = Field(
-        json_schema_extra={"unit": "n.a.", "status": "mandatory"},
         description="Fuel type (e.g. 'Gas', 'Coal', 'Wind', 'Solar', 'Water', 'Electricity')."
     )
 
     unit_type: Dict[U, Literal["supply", "conversion"]] = Field(
-        json_schema_extra={"unit": "n.a.", "status": "optional"},
         default_factory=dict,
         description=(
             "Modelling role of the unit: "
@@ -81,25 +75,21 @@ class Generators(BaseModel):
     # Network & carriers
     # -----------------------------------------------------------
     carrier_in: Dict[U, Optional[Carrier]] = Field(
-        json_schema_extra={"unit": "n.a.", "status": "optional"},
         default_factory=dict,
         description="Input carrier for conversion units (e.g. 'Electricity' for HP, ETES pumps)."
     )
     
     carrier_out: Dict[U, Carrier] = Field(
-        json_schema_extra={"unit": "n.a.", "status": "optional"},
         default_factory=dict,
         description="Output carrier (e.g. 'Electricity', 'Heat', 'H2')."
     )
 
     bus_in: Dict[U, Optional[BusId]] = Field(
-        json_schema_extra={"unit": "n.a.", "status": "optional"},
         default_factory=dict,
         description="Bus where input power is drawn (for conversion units)."
     )
 
     bus_out: Dict[U, BusId] = Field(
-        json_schema_extra={"unit": "n.a.", "status": "optional"},
         default_factory=dict,
         description="Bus where output power is injected."
     )
@@ -108,42 +98,34 @@ class Generators(BaseModel):
     # Static techno-economic parameters (power side)
     # -----------------------------------------------------------
     p_nom: Dict[U, float] = Field(
-        json_schema_extra={"unit": "MW", "status": "mandatory"},
         description="Existing/committed nominal output power capacity [MW]."
     )
 
     p_nom_max: Dict[U, float] = Field(
-        json_schema_extra={"unit": "MW", "status": "optional"},
         default_factory=dict,
         description="Maximum allowed power capacity [MW] (upper bound on investment)."
     )
 
     cap_factor: Dict[U, float] = Field(
-        json_schema_extra={"unit": "p.u.", "status": "mandatory"},
         description="Capacity factor of unit."
     )
 
     capital_cost: Dict[U, float] = Field(
-        json_schema_extra={"unit": "EUR/MW", "status": "mandatory"},
         description="Investment cost per unit of power capacity [€/MW]."
     )
 
     lifetime: Dict[U, int] = Field(
-        json_schema_extra={"unit": "years", "status": "mandatory"},
         description="Technical/economic lifetime of the power asset [years]."
     )
 
     decom_start_existing: Dict[U, int] = Field(
-        json_schema_extra={"unit": "year", "status": "mandatory"},
         description="Year when existing capacity starts decommissioning."
     )
     decom_start_new: Dict[U, int] = Field(
-        json_schema_extra={"unit": "year", "status": "mandatory"},
         description="Year when newly built capacity starts decommissioning."
     )
 
     final_cap: Dict[U, float] = Field(
-        json_schema_extra={"unit": "MW", "status": "mandatory"},
         description="Residual power capacity at end of horizon [MW]."
     )
 
@@ -151,7 +133,6 @@ class Generators(BaseModel):
     # Efficiencies, emissions, variable costs
     # -----------------------------------------------------------
     efficiency: Dict[U, float] = Field(
-        json_schema_extra={"unit": "p.u.", "status": "mandatory"},
         description=(
             "Static efficiency per unit (output/input). "
             "For fuel-based generators, fuel→power; for HP, power→heat, etc."
@@ -162,18 +143,15 @@ class Generators(BaseModel):
     # If present, the model may override `efficiency[u]` with `efficiency_ts[u,p,y]`
     # for those indices where a time-varying value is defined.
     efficiency_ts: Dict[UPY, float] = Field(
-        json_schema_extra={"unit": "p.u.", "status": "optional"},
         default_factory=dict,
         description="Time-varying efficiency (e.g. COP) by (unit, period, year)."
     )
 
     co2_intensity: Dict[U, float] = Field(
-        json_schema_extra={"unit": "tCO2/MWh_output", "status": "mandatory"},
         description="CO2 intensity attributed to output [tCO2/MWh_output]."
     )
 
     var_cost_no_fuel: Dict[U, float] = Field(
-        json_schema_extra={"unit": "EUR/MWh_output", "status": "mandatory"},
         description="Non-fuel variable O&M cost [€/MWh_output]."
     )
 
@@ -181,15 +159,12 @@ class Generators(BaseModel):
     # Ramping & operational flexibility
     # -----------------------------------------------------------
     ramp_up_rate: Dict[U, float] = Field(
-        json_schema_extra={"unit": "MW/period or p.u.", "status": "mandatory"},
         description="Maximum ramp-up rate [MW/period or pu]."
     )
     ramp_down_rate: Dict[U, float] = Field(
-        json_schema_extra={"unit": "MW/period or p.u.", "status": "mandatory"},
         description="Maximum ramp-down rate [MW/period or pu]."
     )
     ramping_cost: Dict[U, float] = Field(
-        json_schema_extra={"unit": "n.a.", "status": "optional"},
         default_factory=dict,
         description="Ramping cost coefficient (optional)."
     )
@@ -198,34 +173,28 @@ class Generators(BaseModel):
     # CHP / multi-output metadata (optional)
     # -----------------------------------------------------------
     chp_power_to_heat: Dict[U, float] = Field(
-        json_schema_extra={"unit": "p.u.", "status": "optional"},
         default_factory=dict,
         description="Back-pressure power-to-heat ratio for CHP units."
     )
     chp_power_loss_factor: Dict[U, float] = Field(
-        json_schema_extra={"unit": "p.u.", "status": "optional"},
         default_factory=dict,
         description="Slope of condensing-to-heat trade-off for extraction CHP."
     )
     chp_max_heat: Dict[U, float] = Field(
-        json_schema_extra={"unit": "MW_heat", "status": "optional"},
         default_factory=dict,
         description="Maximum thermal output [MW_heat] for CHP units."
     )
     chp_type: Dict[U, str] = Field(
-        json_schema_extra={"unit": "n.a.", "status": "optional"},
         default_factory=dict,
         description="CHP configuration label (e.g. 'backpressure', 'extraction')."
     )
 
     bus_out_2: Dict[U, Optional[BusId]] = Field(
-        json_schema_extra={"unit": "n.a.", "status": "optional"},
         default_factory=dict,
         description="Second output bus, e.g. to represent heat output of CHP units."
     )
 
     carrier_out_2: Dict[U, Optional[BusId]] = Field(
-        json_schema_extra={"unit": "n.a.", "status": "optional"},
         default_factory=dict,
         description="Carrier of second output, e.g. heat for CHP units."
     )   
@@ -234,7 +203,6 @@ class Generators(BaseModel):
     # Time series (profiles & full variable costs)
     # -----------------------------------------------------------
     p_t: Dict[UPY, float] = Field(
-        json_schema_extra={"unit": "p.u.", "status": "optional"},
         default_factory=dict,
         description=(
             "Normalized profile (0–1) by (unit, period, year), typically for "
@@ -243,7 +211,6 @@ class Generators(BaseModel):
     )
 
     var_cost: Dict[UPY, float] = Field(
-        json_schema_extra={"unit": "EUR/MWh_output", "status": "optional"},
         default_factory=dict,
         description=(
             "Full variable cost [€/MWh_output] including fuel, by (unit, period, year). "

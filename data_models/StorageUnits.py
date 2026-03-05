@@ -34,49 +34,41 @@ class StorageUnits(BaseModel):
     # Index & classification
     # -----------------------------------------------------------
     unit: List[U] = Field(
-        json_schema_extra={"unit": "n.a.", "status": "optional"},
         default_factory=list,
         description="Name of the storage assets (hydro reservoirs, PHS, batteries, TES, H2 tanks, ...).",
     )
 
     system: Dict[U, str] = Field(
-        json_schema_extra={"unit": "n.a.", "status": "optional"},
         default_factory=dict,
         description="System/scenario tag (column 'system' in storage_units.csv), e.g. country code.",
     )
 
     region: Dict[U, str] = Field(
-        json_schema_extra={"unit": "n.a.", "status": "optional"},
         default_factory=dict,
         description="Region/zone for the storage asset (column 'region' in storage_units.csv).",
     )
 
     tech: Dict[U, str] = Field(
-        json_schema_extra={"unit": "n.a.", "status": "optional"},
         default_factory=dict,
         description="Storage technology label (e.g. 'HDAM', 'HPHS', 'BESS', 'TES', 'H2_tank').",
     )
 
     carrier_in: Dict[U, Carrier] = Field(
-        json_schema_extra={"unit": "n.a.", "status": "optional"},
         default_factory=dict,
         description="Input energy carrier (e.g. 'Electricity', 'Heat', 'H2').",
     )
 
     carrier_out: Dict[U, Carrier] = Field(
-        json_schema_extra={"unit": "n.a.", "status": "optional"},
         default_factory=dict,
         description="Output energy carrier (e.g. 'Electricity', 'Heat', 'H2').",
     )
 
     bus_in: Dict[U, BusId] = Field(
-        json_schema_extra={"unit": "n.a.", "status": "optional"},
         default_factory=dict,
         description="Bus where storage charge is connected (e.g. 'SystemBus').",
     )
     
     bus_out: Dict[U, BusId] = Field(
-        json_schema_extra={"unit": "n.a.", "status": "optional"},
         default_factory=dict,
         description="Bus where storage discharge is connected (e.g. 'SystemBus').",
     )
@@ -85,56 +77,47 @@ class StorageUnits(BaseModel):
     # Energy & power capacities
     # -----------------------------------------------------------
     e_nom: Dict[U, float] = Field(
-        json_schema_extra={"unit": "MWh", "status": "optional"},
         default_factory=dict,
         description="Existing/committed energy capacity [MWh].",
     )
 
     e_min: Dict[U, float] = Field(
-        json_schema_extra={"unit": "MWh", "status": "optional"},
         default_factory=dict,
         description="Minimum allowed energy level during operation[MWh].",
     )
 
     e_nom_max: Dict[U, float] = Field(
-        json_schema_extra={"unit": "MWh", "status": "optional"},
         default_factory=dict,
         description="Maximum allowed energy capacity to be installed [MWh] (e.g. = e_nom for non-expandable hydro).",
     )
 
     p_charge_nom: Dict[U, float] = Field(
-        json_schema_extra={"unit": "MW", "status": "optional"},
         default_factory=dict,
         description="Maximum charging power [MW] into storage (physical limit).",
     )
 
     p_charge_nom_max: Dict[U, float] = Field(
-        json_schema_extra={"unit": "MW", "status": "optional"},
         default_factory=dict,
         description="Maximum charging capacity[MW] that can be installed.",
     )
 
     p_discharge_nom: Dict[U, float] = Field(
-        json_schema_extra={"unit": "MW", "status": "optional"},
         default_factory=dict,
         description="Maximum discharging power [MW] from storage (physical limit).",
     )
 
     p_discharge_nom_max: Dict[U, float] = Field(
-        json_schema_extra={"unit": "MW", "status": "optional"},
         default_factory=dict,
         description="Maximum discharging capacity [MW] that can be installed.",
     )
 
     # Duration-based sizing (aligned with storage_units.csv template)
     duration_charge: Dict[U, float] = Field(
-        json_schema_extra={"unit": "hours", "status": "optional"},
         default_factory=dict,
         description="Charge duration [h]; combined with e_nom to derive p_charge_nom when templates use duration.",
     )
 
     duration_discharge: Dict[U, float] = Field(
-        json_schema_extra={"unit": "hours", "status": "optional"},
         default_factory=dict,
         description="Discharge duration [h]; combined with e_nom to derive p_discharge_nom when templates use duration.",
     )
@@ -143,19 +126,16 @@ class StorageUnits(BaseModel):
     # Efficiencies & losses (energy side)
     # -----------------------------------------------------------
     efficiency_charge: Dict[U, float] = Field(
-        json_schema_extra={"unit": "p.u.", "status": "optional"},
         default_factory=dict,
         description="Charging efficiency (fraction of input power stored).",
     )
 
     efficiency_discharge: Dict[U, float] = Field(
-        json_schema_extra={"unit": "p.u.", "status": "optional"},
         default_factory=dict,
         description="Discharging efficiency (fraction of stored energy delivered).",
     )
 
     standby_loss: Dict[U, float] = Field(
-        json_schema_extra={"unit": "p.u.", "status": "optional"},
         default_factory=dict,
         description="Fractional standing loss of stored energy per model period.",
     )
@@ -164,25 +144,21 @@ class StorageUnits(BaseModel):
     # Economics & lifetime (energy side)
     # -----------------------------------------------------------
     capital_cost_energy: Dict[U, float] = Field(
-        json_schema_extra={"unit": "EUR/MWh", "status": "optional"},
         default_factory=dict,
         description="Investment cost per unit of energy capacity [€/MWh].",
     )
 
     capital_cost_power_charge: Dict[U, float] = Field(
-        json_schema_extra={"unit": "EUR/MW", "status": "optional"},
         default_factory=dict,
         description="Investment cost per unit of charge power [€/MW].",
     )
 
     capital_cost_power_discharge: Dict[U, float] = Field(
-        json_schema_extra={"unit": "EUR/MW", "status": "optional"},
         default_factory=dict,
         description="Investment cost per unit of discharge power [€/MW].",
     )
 
     lifetime: Dict[U, int] = Field(
-        json_schema_extra={"unit": "years", "status": "optional"},
         default_factory=dict,
         description="Technical/economic lifetime of storage asset [years].",
     )
@@ -191,13 +167,11 @@ class StorageUnits(BaseModel):
     # Time series / inflows
     # -----------------------------------------------------------
     inflow: Dict[UPY, float] = Field(
-        json_schema_extra={"unit": "MWh/period", "status": "optional"},
         default_factory=dict,
         description="Exogenous inflow to storage [MWh/period] by (unit, period, year), e.g. hydro inflows.",
     )
 
     spillage_cost: Dict[U, float] = Field(
-        json_schema_extra={"unit": "EUR/MWh", "status": "optional"},
         default_factory=dict,
         description="Penalty cost for spilling energy [€/MWh], if modelled.",
     )
@@ -206,7 +180,6 @@ class StorageUnits(BaseModel):
     # Optional energy-capacity capex by (unit, year)
     # -----------------------------------------------------------
     e_nom_inv_cost: Dict[Tuple[U, Y], float] = Field(
-        json_schema_extra={"unit": "EUR/MWh", "status": "optional"},
         default_factory=dict,
         description="Specific investment cost for energy capacity [€/MWh] per (unit, year).",
     )

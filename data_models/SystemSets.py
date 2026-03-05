@@ -35,14 +35,8 @@ class SystemSets(BaseModel):
     # --------------------------
     # Time sets
     # --------------------------
-    years: List[Y] = Field(
-        description="Model years in the planning horizon.",
-        json_schema_extra={"unit": "year", "status": "mandatory"},
-    )
-    periods: List[P] = Field(
-        description="Time periods within a year (e.g., hours).",
-        json_schema_extra={"unit": "index", "status": "mandatory"},
-    )
+    years: List[Y]
+    periods: List[P]
 
     # --------------------------
     # Carriers and buses
@@ -50,12 +44,10 @@ class SystemSets(BaseModel):
     carriers: List[Carrier] = Field(
         default_factory=lambda: ["Electricity"],
         description="Energy carriers (e.g. Electricity, Heat, H2).",
-        json_schema_extra={"unit": "n.a.", "status": "optional"},
     )
     buses: List[BusId] = Field(
         default_factory=lambda: ["SystemBus"],
         description="Network buses; single-node version uses one bus.",
-        json_schema_extra={"unit": "n.a.", "status": "optional"},
     )
 
     # --------------------------
@@ -64,32 +56,29 @@ class SystemSets(BaseModel):
     units: List[U] = Field(
         default_factory=list,
         description="All generator / converter units (CCGT, WindPP, PV, CHP, HP, etc.).",
-        json_schema_extra={"unit": "n.a.", "status": "optional"},
     )
     storage_units: List[U] = Field(
         default_factory=list,
         description="All storage units (battery, TES, H2, HDAM, HPHS, ...).",
-        json_schema_extra={"unit": "n.a.", "status": "optional"},
     )
 
     # --------------------------
     # Generator subsets (⊆ units)
     # --------------------------
-    fossil_units: List[U] = Field(default_factory=list, json_schema_extra={"unit": "n.a.", "status": "optional"})
-    biomass_units: List[U] = Field(default_factory=list, json_schema_extra={"unit": "n.a.", "status": "optional"})
-    hror_units: List[U] = Field(default_factory=list, json_schema_extra={"unit": "n.a.", "status": "optional"})
-    wind_units: List[U] = Field(default_factory=list, json_schema_extra={"unit": "n.a.", "status": "optional"})
-    solar_units: List[U] = Field(default_factory=list, json_schema_extra={"unit": "n.a.", "status": "optional"})
-    chp_units: List[U] = Field(default_factory=list, json_schema_extra={"unit": "n.a.", "status": "optional"})
+    fossil_units: List[U] = Field(default_factory=list)
+    biomass_units: List[U] = Field(default_factory=list)
+    hror_units: List[U] = Field(default_factory=list)
+    wind_units: List[U] = Field(default_factory=list)
+    solar_units: List[U] = Field(default_factory=list)
+    chp_units: List[U] = Field(default_factory=list)
 
     ncre_units: List[U] = Field(
         default_factory=list,
         description="Optional group for non-conventional renewables (e.g. wind, solar, biomass, RoR hydro).",
-        json_schema_extra={"unit": "n.a.", "status": "optional"},
     )
 
-    disp_units: List[U] = Field(default_factory=list, json_schema_extra={"unit": "n.a.", "status": "optional"})
-    nondisp_units: List[U] = Field(default_factory=list, json_schema_extra={"unit": "n.a.", "status": "optional"})
+    disp_units: List[U] = Field(default_factory=list)
+    nondisp_units: List[U] = Field(default_factory=list)
 
     # --------------------------
     # Storage subsets (⊆ storage_units)
@@ -97,22 +86,19 @@ class SystemSets(BaseModel):
     hydro_storage_units: List[U] = Field(
         default_factory=list,
         description="Hydro storage assets (HDAM, HPHS, etc.).",
-        json_schema_extra={"unit": "n.a.", "status": "optional"},
     )
     hdam_units: List[U] = Field(
         default_factory=list,
         description="Hydro dam storage units (tech == 'HDAM').",
-        json_schema_extra={"unit": "n.a.", "status": "optional"},
     )
     hphs_units: List[U] = Field(
         default_factory=list,
         description="Pumped hydro storage units (tech == 'HPHS').",
-        json_schema_extra={"unit": "n.a.", "status": "optional"},
     )
 
-    battery_units: List[U] = Field(default_factory=list, json_schema_extra={"unit": "n.a.", "status": "optional"})
-    tes_units: List[U] = Field(default_factory=list, json_schema_extra={"unit": "n.a.", "status": "optional"})
-    hydrogen_storage_units: List[U] = Field(default_factory=list, json_schema_extra={"unit": "n.a.", "status": "optional"})
+    battery_units: List[U] = Field(default_factory=list)
+    tes_units: List[U] = Field(default_factory=list)
+    hydrogen_storage_units: List[U] = Field(default_factory=list)
 
     # --------------------------
     # Demand sectors
@@ -120,7 +106,6 @@ class SystemSets(BaseModel):
     demand_sectors: List[Sector] = Field(
         default_factory=lambda: ["Electricity"],
         description="Logical demand sectors (e.g. Electricity, Industry, Transport).",
-        json_schema_extra={"unit": "n.a.", "status": "optional"},
     )
 
     model_config = ConfigDict(frozen=True, extra="forbid")
