@@ -196,6 +196,18 @@ class StorageUnits(BaseModel):
         description="Exogenous inflow to storage [MWh/period] by (unit, period, year), e.g. hydro inflows.",
     )
 
+    availability: Dict[UPY, float] = Field(
+        json_schema_extra={"unit": "p.u.", "status": "optional"},
+        default_factory=dict,
+        description="Optional storage availability factor [0-1] by (unit, period, year).",
+    )
+
+    e_nom_ts: Dict[UPY, float] = Field(
+        json_schema_extra={"unit": "MWh", "status": "optional"},
+        default_factory=dict,
+        description="Optional time-varying effective energy capacity [MWh] by (unit, period, year).",
+    )
+
     spillage_cost: Dict[U, float] = Field(
         json_schema_extra={"unit": "EUR/MWh", "status": "optional"},
         default_factory=dict,
@@ -255,14 +267,24 @@ class StorageUnits(BaseModel):
                 raise TypeError(f"e_nom_inv_cost key has non-str unit: {u!r}")
         return v
 
-    @field_validator("inflow", mode="after")
-    def _inflow_keys_are_upy(cls, v):
+    @field_validator("inflow", "availability", "e_nom_ts", mode="after")
+    def _ts_keys_are_upy(cls, v):
         """
-        Ensure inflow keys are (unit:str, period:int, year:int).
+        Ensure time-series keys are (unit:str, period:int, year:int).
         """
         for (u, p, y) in v:
             if not isinstance(u, str):
-                raise TypeError(f"inflow key has non-str unit: {u!r}")
+                raise TypeError(f"time-series key has non-str unit: {u!r}")
+        return v
+
+    @field_validator("inflow", "availability", "e_nom_ts", mode="after")
+    def _ts_units_subset_of_units(cls, v, info):
+        units = set(info.data.get("unit", []))
+        extra_units = {u for (u, p, y) in v if u not in units}
+        if extra_units:
+            raise ValueError(
+                f"{info.field_name} contains unknown units: {sorted(extra_units)}"
+            )
         return v
 
     @field_validator("duration_charge", "duration_discharge", mode="after")
