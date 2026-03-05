@@ -6,7 +6,7 @@ from typing import List, Optional
 import pandas as pd
 
 from data_models.SystemSets import SystemSets
-from data_loaders.helpers.io import read_table
+from data_loaders.helpers.io import TableCache, read_table
 from data_loaders.helpers.iter_utils import union_lists
 from data_loaders.helpers.transport_utils import _is_electric_transport_tech
 
@@ -18,6 +18,7 @@ def load_sets(
     storage_path: Optional[str] = None,
     transport_zones_path: Optional[str] = None,
     existing_sets: Optional[SystemSets] = None,
+    table_cache: Optional[TableCache] = None,
 ) -> SystemSets:
     """Load SystemSets from core input tables.
 
@@ -45,12 +46,12 @@ def load_sets(
     # --------------------------------------------------------------
     # 1. Read input CSVs
     # --------------------------------------------------------------
-    df_powerplant = read_table(powerplants_path)
-    df_profiles = read_table(renewable_profiles_path) if renewable_profiles_path else None
-    df_fc = read_table(fuel_cost_path) if fuel_cost_path else None
-    df_buses = read_table(buses_path) if buses_path else None
-    df_storage = read_table(storage_path) if storage_path else None
-    df_transport = read_table(transport_zones_path) if transport_zones_path else None
+    df_powerplant = read_table(powerplants_path, cache=table_cache)
+    df_profiles = read_table(renewable_profiles_path, cache=table_cache) if renewable_profiles_path else None
+    df_fc = read_table(fuel_cost_path, cache=table_cache) if fuel_cost_path else None
+    df_buses = read_table(buses_path, cache=table_cache) if buses_path else None
+    df_storage = read_table(storage_path, cache=table_cache) if storage_path else None
+    df_transport = read_table(transport_zones_path, cache=table_cache) if transport_zones_path else None
 
     # --------------------------------------------------------------
     # 2. Basic validation of required columns

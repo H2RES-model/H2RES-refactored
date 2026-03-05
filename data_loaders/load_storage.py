@@ -10,7 +10,7 @@ from data_models.SystemSets import SystemSets
 from data_models.StorageUnits import StorageUnits
 from data_models.Bus import Bus
 from data_loaders.helpers.defaults import default_carrier, default_electric_bus
-from data_loaders.helpers.io import read_table
+from data_loaders.helpers.io import TableCache, read_table
 from data_loaders.helpers.storage_utils import (
     StorageRecordStore,
     assert_unit_key_subset,
@@ -48,6 +48,7 @@ def load_storage(
     sets: SystemSets,
     buses: Bus,
     existing_storage: Optional[StorageUnits] = None,
+    table_cache: Optional[TableCache] = None,
 ) -> StorageUnits:
     """Build StorageUnits from powerplants, templates, and inflow data.
 
@@ -103,7 +104,7 @@ def load_storage(
     # ------------------------------------------------------------------
     # Hydro storage (HDAM, HPHS)
     # ------------------------------------------------------------------
-    df_pp = read_table(powerplants_path)
+    df_pp = read_table(powerplants_path, cache=table_cache)
     pp_required = {"name", "tech", "p_nom", "capital_cost", "lifetime"}
     require_columns(df_pp, pp_required, powerplants_path)
 
@@ -120,7 +121,7 @@ def load_storage(
     # Standard storage units from CSV template (with durations)
     # ------------------------------------------------------------------
     load_template_storage(
-        storage_path, sets, store, default_carrier_value, default_bus_value
+        storage_path, sets, store, default_carrier_value, default_bus_value, table_cache=table_cache
     )
 
     # ------------------------------------------------------------------
@@ -158,7 +159,7 @@ def load_storage(
         # the in-memory Bus object may be sector-filtered.
         known_buses_for_transport = [str(b).strip() for b in getattr(buses, "name", [])]
         if buses_path:
-            df_buses_all = read_table(buses_path)
+            df_buses_all = read_table(buses_path, cache=table_cache)
             if "bus" not in df_buses_all.columns:
                 raise ValueError(f"{buses_path} missing required column 'bus'.")
             known_buses_for_transport = (
@@ -181,7 +182,7 @@ def load_storage(
             buses=known_buses_for_transport,
         )
         load_template_storage(
-            transport_storage_path, sets, store, default_carrier_value, default_bus_value
+            transport_storage_path, sets, store, default_carrier_value, default_bus_value, table_cache=table_cache
         )
 
         params_df, ev_availability, _ev_demand_profile = load_ev_inputs(
@@ -228,7 +229,7 @@ def load_storage(
     # ------------------------------------------------------------------
     # Hydro inflows (wide -> long: year, period, <hydro_unit...>)
     # ------------------------------------------------------------------
-    inflow = load_inflows(inflow_path, hydro_units, sets)
+    inflow = load_inflows(inflow_path, hydro_units, sets, table_cache=table_cache)
 
     # ------------------------------------------------------------------
     # Build dicts

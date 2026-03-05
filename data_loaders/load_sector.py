@@ -168,6 +168,7 @@ def load_sector(
             sector=sector,
             sets=sets,
             existing_buses=existing_system.bus if existing_system else None,
+            table_cache=table_cache,
         )
 
     # --------------------------------------------------------------
@@ -245,6 +246,7 @@ def load_sector(
             industry_path=demand_industry_path or None,
             buses=buses,
             existing_demand=existing_system.demand if existing_system else None,
+            table_cache=table_cache,
         )
 
     # --------------------------------------------------------------
