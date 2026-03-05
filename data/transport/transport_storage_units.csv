@@ -1,0 +1,13 @@
+system,region,name,tech,bus_in,e_nom,e_nom_max,e_min,duration_charge,duration_discharge,efficiency_charge,efficiency_discharge,standby_loss,capital_cost_energy,capital_cost_power_charge,capital_cost_power_discharge,lifetime,spillage_cost
+HR,HR,passenger_cars_EV_electricity,EV,HR_EL,14.05,14.05,0.0,7.142857142857143,7.142857142857143,0.9,0.9,0.0,0.0,0.0,100.0,20,0.0
+HR,HR,passenger_cars_FCEV_hydrogen,FCEV,HR_H2,0.0,0.0,0.0,0.084,0.084,0.9,0.9,0.0,0.0,0.0,100.0,20,0.0
+HR,HR,domestic_aviation_EV_electricity,EV,HR_EL,0.0,0.0,0.0,0.5,0.5,0.9,0.9,0.0,0.0,0.0,100.0,20,0.0
+HR,HR,domestic_aviation_FCEV_hydrogen,FCEV,HR_H2,0.0,0.0,0.0,0.1,0.1,0.9,0.9,0.0,0.0,0.0,100.0,20,0.0
+HR,HR,international_aviation_FCEV_hydrogen,FCEV,HR_H2,0.0,0.0,0.0,12.5,12.5,0.9,0.9,0.0,0.0,0.0,100.0,20,0.0
+HR,HR,motor_coaches_buses_and_trolley_buses_EV_electricity,EV,HR_EL,0.0,0.0,0.0,0.8,0.8,0.9,0.9,0.0,0.0,0.0,100.0,20,0.0
+HR,HR,motor_coaches_buses_and_trolley_buses_FCEV_hydrogen,FCEV,HR_H2,12.0,12.0,0.0,0.06666666666666667,0.06666666666666667,0.9,0.9,0.0,0.0,0.0,100.0,20,0.0
+HR,HR,rail_metro_and_tram_EV_electricity,EV,HR_EL,0.0,0.0,0.0,3.3333333333333335,3.3333333333333335,0.9,0.9,0.0,0.0,0.0,100.0,20,0.0
+HR,HR,domestic_shipping_EV_electricity,EV,HR_EL,12.225,12.225,0.0,3.326530612244898,3.326530612244898,0.9,0.9,0.0,0.0,0.0,100.0,20,0.0
+HR,HR,rail_transport_EV_electricity,EV,HR_EL,7.5,7.5,0.0,3.3333333333333335,3.3333333333333335,0.9,0.9,0.0,0.0,0.0,100.0,20,0.0
+HR,HR,commercial_vehicles_EV_electricity,EV,HR_EL,38.0,38.0,0.0,1.0,1.0,0.9,0.9,0.0,0.0,0.0,100.0,20,0.0
+HR,HR,commercial_vehicles_FCEV_hydrogen,FCEV,HR_H2,0.0,0.0,0.0,0.25,0.25,0.9,0.9,0.0,0.0,0.0,100.0,20,0.0
