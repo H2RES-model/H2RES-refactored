@@ -14,6 +14,7 @@ def load_system(
     electricity_paths: Dict[str, PathLike],
     heating_paths: Optional[Dict[str, PathLike]] = None,
     cooling_paths: Optional[Dict[str, PathLike]] = None,
+    industry_paths: Optional[Dict[str, PathLike]] = None,
     buses_path: Optional[PathLike] = None,
     fuel_cost_path: Optional[PathLike] = None,
     table_cache: Optional[TableCache] = None,
@@ -88,6 +89,7 @@ def load_system(
     electricity_kwargs = _coerce_paths(electricity_paths)
     heating_kwargs = _coerce_paths(heating_paths)
     cooling_kwargs = _coerce_paths(cooling_paths)
+    industry_kwargs = _coerce_paths(industry_paths)
 
     cache = table_cache if table_cache is not None else {}
 
@@ -106,8 +108,13 @@ def load_system(
                 raise ValueError("cooling_paths must be provided when loading cooling sector.")
             kwargs = dict(cooling_kwargs)
             kwargs["sector"] = "cooling"
-        elif sector in {"industry", "transport"}:
-            raise NotImplementedError(f"{sector} not supported by load_sector yet.")
+        elif sector == "industry":
+            if not industry_kwargs:
+                raise ValueError("industry_paths must be provided when loading industry sector.")
+            kwargs = dict(industry_kwargs)
+            kwargs["sector"] = "industry"
+        elif sector == "transport":
+            raise NotImplementedError("transport not supported by load_sector yet.")
         else:
             raise ValueError(f"Unhandled sector: {sector}")
 
