@@ -82,6 +82,7 @@ def load_storage(
         "electricity": "electricity",
         "heating": "heating",
         "cooling": "cooling",
+        "industry": "industry",
     }
     sector_key = sector.strip().lower() if sector else None
     if sector_key and sector_key not in sector_map:

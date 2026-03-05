@@ -1,0 +1,5 @@
+system,region,name,tech,fuel,unit_type,carrier_in,carrier_out,bus_in,bus_out,p_nom,p_nom_max,cap_factor,capital_cost,lifetime,decom_start_existing,decom_start_new,final_cap,efficiency,co2_intensity,var_cost_no_fuel,ramp_up_rate,ramp_down_rate,ramping_cost,e_nom,p_charge_nom,standby_loss,efficiency_charge,efficiency_discharge,chp_power_to_heat,chp_power_loss_factor,chp_max_heat,chp_type,carrier_out_2,bus_out_2
+HR,HR,electricity,electric_boiler,electricity,conversion,electricity,industry_heat,HR_EL,IND_HR_1,1,500,1,700,15,15,15,0,1,,0,1,1,0,,,,,,,,,,,
+HR,HR,gas,gas_boiler,gas,conversion,gas,industry_heat,HR_GAS,IND_HR_1,1,500,1,700,15,15,15,0,1,,0,1,1,0,,,,,,,,,,,
+HR,HR,oil,oil_boiler,oil,conversion,oil,industry_heat,HR_OIL,IND_HR_1,1,500,1,700,15,15,15,0,1,,0,1,1,0,,,,,,,,,,,
+HR,HR,biomass,biomass_boiler,biomass,conversion,biomass,industry_heat,HR_BIOMASS,IND_HR_1,1,500,1,700,15,15,15,0,1,,0,1,1,0,,,,,,,,,,,

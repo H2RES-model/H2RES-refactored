@@ -19,9 +19,10 @@ Key = Tuple[str, str, str, str, int, int]  # (system, region, bus, carrier, peri
 def load_demand(
     *,
     sets: SystemSets,
-    electricity_path: str,
+    electricity_path: Optional[str] = None,
     heating_path: Optional[str] = None,
     cooling_path: Optional[str] = None,
+    industry_path: Optional[str] = None,
     transport_demand_path: Optional[str] = None,
     transport_general_params_path: Optional[str] = None,
     transport_zones_path: Optional[str] = None,
@@ -181,6 +182,7 @@ def load_demand(
         ("electricity", electricity_path),
         ("heat", heating_path),
         ("cooling", cooling_path),
+        ("industry_heat", industry_path),
     ):
         part = _read_single(path, carrier)
         for key, val in part.items():
