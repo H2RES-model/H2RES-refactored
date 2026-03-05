@@ -3,14 +3,14 @@
 from __future__ import annotations
 
 from typing import Dict, List, Optional, Tuple
-import gc
 import os
 
 from data_models.SystemSets import SystemSets
 from data_models.StorageUnits import StorageUnits
 from data_models.Bus import Bus
 from data_loaders.helpers.defaults import default_carrier, default_electric_bus
-from data_loaders.helpers.io import read_table
+from data_loaders.helpers.io import TableCache, read_columns, read_table
+from data_loaders.helpers.model_factory import build_model
 from data_loaders.helpers.storage_utils import (
     StorageRecordStore,
     assert_unit_key_subset,
@@ -37,6 +37,7 @@ def load_storage(
     sets: SystemSets,
     buses: Bus,
     existing_storage: Optional[StorageUnits] = None,
+    table_cache: Optional[TableCache] = None,
 ) -> StorageUnits:
     """Build StorageUnits from powerplants, templates, and inflow data.
 
@@ -85,7 +86,39 @@ def load_storage(
     # ------------------------------------------------------------------
     # Hydro storage (HDAM, HPHS)
     # ------------------------------------------------------------------
-    df_pp = read_table(powerplants_path)
+    pp_cols_available = set(read_columns(powerplants_path, cache=table_cache))
+    pp_cols = [
+        c
+        for c in (
+            "name",
+            "tech",
+            "p_nom",
+            "p_nom_max",
+            "p_charge_nom",
+            "p_charge_nom_max",
+            "e_nom",
+            "e_nom_max",
+            "capital_cost",
+            "lifetime",
+            "bus_in",
+            "bus_out",
+            "carrier_in",
+            "carrier_out",
+            "system",
+            "region",
+            "efficiency_charge",
+            "efficiency_discharge",
+            "efficiency",
+            "standby_loss",
+            "spillage_cost",
+            "chp_type",
+            "bus_out_2",
+            "carrier_out_2",
+            "chp_max_heat",
+        )
+        if c in pp_cols_available
+    ]
+    df_pp = read_table(powerplants_path, columns=pp_cols or None, cache=table_cache)
     pp_required = {"name", "tech", "p_nom", "capital_cost", "lifetime"}
     require_columns(df_pp, pp_required, powerplants_path)
 
@@ -95,23 +128,20 @@ def load_storage(
     load_chp_tes(
         df_pp, store, default_carrier_value, default_bus_value, sector_key
     )
-    del df_pp
-    gc.collect()
-
     # ------------------------------------------------------------------
     # Standard storage units from CSV template (with durations)
     # ------------------------------------------------------------------
     load_template_storage(
-        storage_path, sets, store, default_carrier_value, default_bus_value
+        storage_path, sets, store, default_carrier_value, default_bus_value, table_cache=table_cache
     )
 
     if not store.unit_order:
-        return existing_storage or StorageUnits()
+        return existing_storage or build_model(StorageUnits)
 
     # ------------------------------------------------------------------
     # Hydro inflows (wide -> long: year, period, <hydro_unit...>)
     # ------------------------------------------------------------------
-    inflow = load_inflows(inflow_path, hydro_units, sets)
+    inflow = load_inflows(inflow_path, hydro_units, sets, table_cache=table_cache)
 
     # ------------------------------------------------------------------
     # Build dicts
@@ -194,7 +224,8 @@ def load_storage(
     )
 
     # e_nom_inv_cost left empty/unchanged
-    return StorageUnits(
+    return build_model(
+        StorageUnits,
         unit=unit,
         tech=tech,
         system=system,

@@ -17,6 +17,8 @@ from data_models.SystemParameters import (
     PolicyParams,
     SystemParameters,
 )
+from data_loaders.helpers.io import TableCache
+from data_loaders.helpers.model_factory import build_model
 from data_loaders.load_sets import load_sets
 from data_loaders.load_generators import load_generators
 from data_loaders.load_storage import load_storage
@@ -38,6 +40,7 @@ def load_sector(
     inflow_path: Optional[str] = None,
     sector: Optional[str] = None,
     existing_system: Optional[SystemParameters] = None,
+    table_cache: Optional[TableCache] = None,
 ) -> SystemParameters:
     """Assemble SystemParameters for a single sector.
 
@@ -133,6 +136,7 @@ def load_sector(
             buses_path=buses_path,
             storage_path=storage_path,
             existing_sets=existing_system.sets if existing_system else None,
+            table_cache=table_cache,
         )
 
     # --------------------------------------------------------------
@@ -157,6 +161,7 @@ def load_sector(
             sector=sector,
             sets=sets,
             existing_buses=existing_system.bus if existing_system else None,
+            table_cache=table_cache,
         )
 
     # --------------------------------------------------------------
@@ -175,6 +180,7 @@ def load_sector(
             sets=sets,
             buses=buses,
             existing_generators=existing_system.generators if existing_system else None,
+            table_cache=table_cache,
         )
 
     # --------------------------------------------------------------
@@ -193,6 +199,7 @@ def load_sector(
             sets=sets,
             buses=buses,
             existing_storage=existing_system.storage if existing_system else None,
+            table_cache=table_cache,
         )
 
     # --------------------------------------------------------------
@@ -223,6 +230,7 @@ def load_sector(
             cooling_path=demand_cooling_path or None,
             buses=buses,
             existing_demand=existing_system.demand if existing_system else None,
+            table_cache=table_cache,
         )
 
     # --------------------------------------------------------------
@@ -251,7 +259,8 @@ def load_sector(
     # --------------------------------------------------------------
     # 8. Assemble and return central SystemParameters dataclass
     # --------------------------------------------------------------
-    return SystemParameters(
+    return build_model(
+        SystemParameters,
         sets=sets,
         bus = buses,
         generators=generators,

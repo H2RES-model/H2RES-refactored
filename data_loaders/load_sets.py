@@ -6,8 +6,9 @@ from typing import List, Optional
 import pandas as pd
 
 from data_models.SystemSets import SystemSets
-from data_loaders.helpers.io import read_table
+from data_loaders.helpers.io import TableCache, read_table
 from data_loaders.helpers.iter_utils import union_lists
+from data_loaders.helpers.model_factory import build_model
 
 def load_sets(
     powerplants_path: str,
@@ -16,6 +17,7 @@ def load_sets(
     buses_path: Optional[str] = None,
     storage_path: Optional[str] = None,
     existing_sets: Optional[SystemSets] = None,
+    table_cache: Optional[TableCache] = None,
 ) -> SystemSets:
     """Load SystemSets from core input tables.
 
@@ -43,11 +45,40 @@ def load_sets(
     # --------------------------------------------------------------
     # 1. Read input CSVs
     # --------------------------------------------------------------
-    df_powerplant = read_table(powerplants_path)
-    df_profiles = read_table(renewable_profiles_path) if renewable_profiles_path else None
-    df_fc = read_table(fuel_cost_path) if fuel_cost_path else None
-    df_buses = read_table(buses_path) if buses_path else None
-    df_storage = read_table(storage_path) if storage_path else None
+    powerplant_cols = [
+        "name",
+        "tech",
+        "fuel",
+        "carrier_out",
+        "bus_out",
+        "p_nom",
+        "p_nom_max",
+        "cap_factor",
+        "capital_cost",
+        "lifetime",
+        "ramping_cost",
+        "ramp_up_rate",
+        "ramp_down_rate",
+        "co2_intensity",
+        "decom_start_existing",
+        "decom_start_new",
+        "final_cap",
+        "var_cost_no_fuel",
+        "efficiency",
+    ]
+    df_powerplant = read_table(powerplants_path, columns=powerplant_cols, cache=table_cache)
+    df_profiles = (
+        read_table(renewable_profiles_path, columns=["year", "period"], cache=table_cache)
+        if renewable_profiles_path
+        else None
+    )
+    df_fc = (
+        read_table(fuel_cost_path, columns=["year", "period"], cache=table_cache)
+        if fuel_cost_path
+        else None
+    )
+    df_buses = read_table(buses_path, columns=["bus", "carrier"], cache=table_cache) if buses_path else None
+    df_storage = read_table(storage_path, columns=["name"], cache=table_cache) if storage_path else None
 
     # --------------------------------------------------------------
     # 2. Basic validation of required columns
@@ -142,23 +173,23 @@ def load_sets(
     # 5. Units and technology/fuel maps
     # --------------------------------------------------------------
     # Use the renamed columns: name, tech, fuel
-    all_unit_names: List[str] = df_powerplant["name"].astype(str).tolist()
-    tech_map = dict(zip(df_powerplant["name"], df_powerplant["tech"]))
-    fuel_map = dict(zip(df_powerplant["name"], df_powerplant["fuel"]))
+    unit_series = df_powerplant["name"].astype(str)
+    tech_series = df_powerplant["tech"].astype(str)
+    fuel_series = df_powerplant["fuel"].astype(str)
+    fuel_lower = fuel_series.str.lower()
+    tech_upper = tech_series.str.upper()
+    tech_lower = tech_series.str.lower()
 
-    def by_fuel(fuels):
-        fs = {f.lower() for f in fuels}
-        return [u for u in all_unit_names if fuel_map[u].lower() in fs]
-
-    def is_tech(code: str, u: str) -> bool:
-        return tech_map[u].upper() == code.upper()
+    all_unit_names: List[str] = unit_series.tolist()
+    tech_map = dict(zip(unit_series, tech_series))
+    fuel_map = dict(zip(unit_series, fuel_series))
 
     # --------------------------------------------------------------
     # 6. Identify hydro techs and split generator vs storage units
     # --------------------------------------------------------------
-    hdam_units = [u for u in all_unit_names if is_tech("HDAM", u)]
-    hphs_units = [u for u in all_unit_names if is_tech("HPHS", u)]
-    hror_units = [u for u in all_unit_names if is_tech("HROR", u)]
+    hdam_units = unit_series[tech_upper == "HDAM"].tolist()
+    hphs_units = unit_series[tech_upper == "HPHS"].tolist()
+    hror_units = unit_series[tech_upper == "HROR"].tolist()
 
     # Hydro storage units = dam + pumped hydro (storage-only)
     hydro_storage_units = sorted(set(hdam_units + hphs_units))
@@ -180,19 +211,15 @@ def load_sets(
     # --------------------------------------------------------------
     # 7. Build generator subsets (⊆ units)
     # --------------------------------------------------------------
-    wind_units_new = [u for u in units_new if fuel_map[u].lower() == "wind"]
-    solar_units_new = [u for u in units_new if fuel_map[u].lower() == "solar"]
-    biomass_units_new = [u for u in units_new if fuel_map[u].lower() == "biomass"]
+    wind_units_new = unit_series[fuel_lower == "wind"].tolist()
+    solar_units_new = unit_series[fuel_lower == "solar"].tolist()
+    biomass_units_new = unit_series[fuel_lower == "biomass"].tolist()
 
     fossil_fuels = {"coal", "gas", "oil", "nuclear"}
-    fossil_units_new = [
-        u for u in units_new if fuel_map[u].lower() in fossil_fuels
-    ]
+    fossil_units_new = unit_series[fuel_lower.isin(fossil_fuels)].tolist()
 
     # CHP units: tech contains 'CHP' string (case-insensitive)
-    chp_units_new = [
-        u for u in units_new if "chp" in tech_map[u].lower()
-    ]
+    chp_units_new = unit_series[tech_lower.str.contains("chp", regex=False)].tolist()
 
     # Non-conventional renewables (wind + solar for now)
     ncre_units_new = sorted(set(wind_units_new + solar_units_new))
@@ -219,7 +246,8 @@ def load_sets(
     # --------------------------------------------------------------
     # 8. Construct SystemSets
     # --------------------------------------------------------------
-    sets = SystemSets(
+    sets = build_model(
+        SystemSets,
         years=years,
         periods=periods,
         carriers=carriers,

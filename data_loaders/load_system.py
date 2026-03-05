@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Dict, Iterable, Optional, Union
 
 from data_loaders.load_sector import load_sector
+from data_loaders.helpers.io import TableCache
 
 PathLike = Union[str, Path]
 
@@ -15,6 +16,7 @@ def load_system(
     cooling_paths: Optional[Dict[str, PathLike]] = None,
     buses_path: Optional[PathLike] = None,
     fuel_cost_path: Optional[PathLike] = None,
+    table_cache: Optional[TableCache] = None,
 ) -> object:
     """Load system parameters for one or more sectors.
 
@@ -87,6 +89,8 @@ def load_system(
     heating_kwargs = _coerce_paths(heating_paths)
     cooling_kwargs = _coerce_paths(cooling_paths)
 
+    cache = table_cache if table_cache is not None else {}
+
     system = None
     for sector in ordered:
         if sector == "electricity":
@@ -114,6 +118,7 @@ def load_system(
 
         if system is not None:
             kwargs["existing_system"] = system # type: ignore error
+        kwargs["table_cache"] = cache
 
         system = load_sector(**kwargs) # type: ignore error
 

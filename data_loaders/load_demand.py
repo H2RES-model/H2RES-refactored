@@ -8,7 +8,8 @@ import pandas as pd
 from data_models.SystemSets import SystemSets
 from data_models.Demand import Demand
 from data_models.Bus import Bus
-from data_loaders.helpers.io import read_table
+from data_loaders.helpers.io import TableCache, read_table
+from data_loaders.helpers.model_factory import build_model
 
 Key = Tuple[str, str, str, str, int, int]  # (system, region, bus, carrier, period, year)
 
@@ -16,11 +17,12 @@ Key = Tuple[str, str, str, str, int, int]  # (system, region, bus, carrier, peri
 def load_demand(
     *,
     sets: SystemSets,
-    electricity_path: str,
+    electricity_path: Optional[str],
     heating_path: Optional[str] = None,
     cooling_path: Optional[str] = None,
     buses: Optional[Bus] = None,
     existing_demand: Optional[Demand] = None,
+    table_cache: Optional[TableCache] = None,
 ) -> Demand:
     """Load demand time series and aggregate into a Demand model.
 
@@ -94,7 +96,7 @@ def load_demand(
         if path is None:
             return {}
 
-        df = read_table(path)
+        df = read_table(path, cache=table_cache, mutable=True)
 
         # required columns
         for col in ("year", "period"):
@@ -115,32 +117,49 @@ def load_demand(
         if df.empty:
             return {}
 
-        # collect demand columns
         id_vars = ["year", "period"]
         value_cols = [c for c in df.columns if c not in id_vars]
         if not value_cols:
             return {}
 
-        # numeric conversion
         for col in value_cols:
             df[col] = pd.to_numeric(df[col], errors="raise")
 
-        out: Dict[Key, float] = {}
+        df_long = df.melt(
+            id_vars=id_vars,
+            value_vars=value_cols,
+            var_name="bus_col",
+            value_name="demand",
+        ).dropna(subset=["demand"])
+        if df_long.empty:
+            return {}
 
-        # Assign each demand column to its own bus (lookup from buses.csv)
-        for col in value_cols:
-            series = df[["year", "period", col]].dropna(subset=[col])
-            if series.empty:
-                continue
-            if (series[col] < 0).any():
-                raise ValueError(f"Negative demand in {path} for {carrier}")
-            sys, reg, bus_id, carrier_val = bus_info(col, carrier)
-            years = series["year"].astype(int).to_numpy()
-            periods = series["period"].astype(int).to_numpy()
-            values = series[col].astype(float).to_numpy()
+        demand_arr = df_long["demand"].to_numpy(dtype=float)
+        if (demand_arr < 0).any():
+            raise ValueError(f"Negative demand in {path} for {carrier}")
 
-            for y, p, val in zip(years, periods, values):
-                out[(sys, reg, bus_id, carrier_val, p, y)] = val
+        bus_meta = {
+            col: bus_info(col, carrier)
+            for col in value_cols
+        }
+        meta_df = pd.DataFrame.from_dict(
+            bus_meta, orient="index", columns=["system", "region", "bus_id", "carrier_val"]
+        )
+        meta_df.index.name = "bus_col"
+        df_long = df_long.join(meta_df, on="bus_col", how="left")
+
+        years = df_long["year"].to_numpy(dtype=int)
+        periods = df_long["period"].to_numpy(dtype=int)
+        systems = df_long["system"].to_numpy(dtype=object)
+        regions = df_long["region"].to_numpy(dtype=object)
+        buses_arr = df_long["bus_id"].to_numpy(dtype=object)
+        carriers = df_long["carrier_val"].to_numpy(dtype=object)
+
+        keys = zip(systems, regions, buses_arr, carriers, periods, years)
+        out: Dict[Key, float] = {
+            (str(sys), str(reg), str(bus_id), str(carrier_val), int(period), int(year)): float(val)
+            for (sys, reg, bus_id, carrier_val, period, year), val in zip(keys, demand_arr)
+        }
 
         return out
 
@@ -158,4 +177,4 @@ def load_demand(
         for key, val in part.items():
             p_t[key] = p_t.get(key, 0.0) + val  # summation logic retained
 
-    return Demand(p_t=p_t)
+    return build_model(Demand, p_t=p_t)

@@ -7,13 +7,14 @@ import pandas as pd
 
 from data_models.SystemSets import SystemSets
 from data_models.Bus import Bus
-from data_loaders.helpers.io import read_table
+from data_loaders.helpers.io import TableCache, read_columns, read_table
 
 
 def load_generators_static(
     powerplants_path: str,
     sets: SystemSets,
     buses: Bus,
+    table_cache: Optional[TableCache] = None,
 ) -> Dict[str, object]:
     """Load static generator parameters from the powerplants table.
 
@@ -60,7 +61,44 @@ def load_generators_static(
         out.loc[mask] = s_str.loc[mask].str.strip()
         return out
 
-    df = read_table(powerplants_path)
+    cols_available = set(read_columns(powerplants_path, cache=table_cache))
+    selected_cols = [
+        c
+        for c in (
+            "name",
+            "tech",
+            "fuel",
+            "unit_type",
+            "p_nom",
+            "p_nom_max",
+            "cap_factor",
+            "capital_cost",
+            "ramping_cost",
+            "ramp_up_rate",
+            "ramp_down_rate",
+            "co2_intensity",
+            "decom_start_existing",
+            "decom_start_new",
+            "final_cap",
+            "lifetime",
+            "var_cost_no_fuel",
+            "efficiency",
+            "system",
+            "region",
+            "carrier_out",
+            "carrier_out_2",
+            "carrier_in",
+            "bus_out",
+            "bus_out_2",
+            "bus_in",
+            "chp_power_to_heat",
+            "chp_power_loss_factor",
+            "chp_max_heat",
+            "chp_type",
+        )
+        if c in cols_available
+    ]
+    df = read_table(powerplants_path, columns=selected_cols or None, cache=table_cache)
 
     required_cols = {
         "name",
