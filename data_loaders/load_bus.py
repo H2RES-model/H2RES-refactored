@@ -18,6 +18,7 @@ def load_bus(
     electricity_demand_path: Optional[str] = None,
     heating_demand_path: Optional[str] = None,
     cooling_demand_path: Optional[str] = None,
+    industry_demand_path: Optional[str] = None,
     transport_zones_path: Optional[str] = None,
     *,
     sector: Optional[str] = None,
@@ -55,6 +56,7 @@ def load_bus(
         "electricity": "electricity",
         "heating": "heat",
         "cooling": "cooling",
+        "industry": "industry_heat",
     }
     sector_key = sector.strip().lower() if sector else None
     if sector_key and sector_key not in sector_carrier_map:
@@ -222,6 +224,7 @@ def load_bus(
     _add_demand_buses(electricity_demand_path, "electricity")
     _add_demand_buses(heating_demand_path, "heat")
     _add_demand_buses(cooling_demand_path, "cooling")
+    _add_demand_buses(industry_demand_path, "industry_heat")
 
     # Transport buses (from zones input)
     if transport_zones_path:
