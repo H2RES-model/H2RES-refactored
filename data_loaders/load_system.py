@@ -15,6 +15,8 @@ def load_system(
     heating_paths: Optional[Dict[str, PathLike]] = None,
     cooling_paths: Optional[Dict[str, PathLike]] = None,
     industry_paths: Optional[Dict[str, PathLike]] = None,
+    transport_paths: Optional[Dict[str, PathLike]] = None,
+    write_transport_storage_units: bool = True,
     buses_path: Optional[PathLike] = None,
     fuel_cost_path: Optional[PathLike] = None,
     table_cache: Optional[TableCache] = None,
@@ -29,6 +31,9 @@ def load_system(
         electricity_paths: Mapping of required electricity input paths.
         heating_paths: Optional mapping of heating input paths.
         cooling_paths: Optional mapping of cooling input paths.
+        industry_paths: Optional mapping of industry input paths.
+        transport_paths: Optional mapping of transport input paths.
+        write_transport_storage_units: Write transport_storage_units.csv to disk.
         buses_path: Optional path to buses metadata used across sectors.
         fuel_cost_path: Optional path to fuel cost time-series used across sectors.
 
@@ -51,6 +56,10 @@ def load_system(
             - storage_path
             - efficiency_ts_path
             - heating_demand_path / cooling_demand_path
+        Required keys in `transport_paths`:
+            - transport_zones_path
+            - transport_availability_path
+            - transport_demand_path
     """
 
     if isinstance(sectors, str):
@@ -90,6 +99,26 @@ def load_system(
     heating_kwargs = _coerce_paths(heating_paths)
     cooling_kwargs = _coerce_paths(cooling_paths)
     industry_kwargs = _coerce_paths(industry_paths)
+    transport_kwargs = _coerce_paths(transport_paths)
+
+    if transport_kwargs:
+        required_transport = {
+            "transport_zones_path",
+            "transport_availability_path",
+            "transport_demand_path",
+        }
+        missing_transport = required_transport - set(transport_kwargs.keys())
+        if missing_transport:
+            raise ValueError(
+                f"Missing required transport paths: {sorted(missing_transport)}. "
+                "Use transport_availability_path and transport_demand_path."
+            )
+    if "transport" in ordered and "electricity" not in ordered:
+        raise ValueError("transport requires electricity sector to be loaded.")
+    if transport_kwargs and "transport" not in ordered:
+        raise ValueError("Include transport sector to allow transport paths.")
+    if "transport" in ordered and not transport_kwargs:
+        raise ValueError("transport sector requires transport_paths.")
 
     cache = table_cache if table_cache is not None else {}
 
@@ -114,7 +143,8 @@ def load_system(
             kwargs = dict(industry_kwargs)
             kwargs["sector"] = "industry"
         elif sector == "transport":
-            raise NotImplementedError("transport not supported by load_sector yet.")
+            # Transport is integrated into electricity loading (demand + storage).
+            continue
         else:
             raise ValueError(f"Unhandled sector: {sector}")
 
@@ -122,6 +152,20 @@ def load_system(
             kwargs["buses_path"] = str(Path(buses_path))
         if fuel_cost_path is not None:
             kwargs["fuel_cost_path"] = str(Path(fuel_cost_path))
+        if sector == "electricity" and transport_kwargs:
+            zones = transport_kwargs.get("transport_zones_path")
+            av = transport_kwargs.get("transport_availability_path")
+            dem = transport_kwargs.get("transport_demand_path")
+            gen = transport_kwargs.get("transport_general_params_path")
+            if zones is not None:
+                kwargs["transport_zones_path"] = zones
+            if av is not None:
+                kwargs["transport_availability_path"] = av
+            if dem is not None:
+                kwargs["transport_demand_path"] = dem
+            if gen is not None:
+                kwargs["transport_general_params_path"] = gen
+            kwargs["write_transport_storage_units"] = write_transport_storage_units
 
         if system is not None:
             kwargs["existing_system"] = system # type: ignore error
