@@ -8,7 +8,7 @@ import pandas as pd
 from data_models.SystemSets import SystemSets
 from data_models.Bus import Bus
 from data_loaders.helpers.defaults import default_carrier, default_electric_bus
-from data_loaders.helpers.io import read_columns, read_table
+from data_loaders.helpers.io import TableCache, read_columns, read_table
 from data_loaders.helpers.transport_utils import _is_electric_transport_tech
 
 def load_bus(
@@ -24,6 +24,7 @@ def load_bus(
     sector: Optional[str] = None,
     sets: SystemSets,
     existing_buses: Optional[Bus] = None,
+    table_cache: Optional[TableCache] = None,
 ) -> Bus:
     """Build a Bus model from templates, powerplants, and demand headers.
 
@@ -63,8 +64,8 @@ def load_bus(
         raise ValueError(f"Unknown sector '{sector}'. Expected one of: {sorted(sector_carrier_map)}")
     sector_carrier = sector_carrier_map.get(sector_key) if sector_key else None
 
-    df_pp = read_table(powerplants_path)
-    df_storage = read_table(storage_path)
+    df_pp = read_table(powerplants_path, cache=table_cache)
+    df_storage = read_table(storage_path, cache=table_cache)
 
     # Filter to known units
     units_set = set(sets.units)
@@ -154,7 +155,7 @@ def load_bus(
 
     # Buses explicitly listed in buses.csv (if provided)
     if buses_path:
-        df_buses = read_table(buses_path)
+        df_buses = read_table(buses_path, cache=table_cache)
         required = {"bus", "carrier"}
         missing = required - set(df_buses.columns)
         if missing:
@@ -213,7 +214,7 @@ def load_bus(
     def _add_demand_buses(csv_path: Optional[str], carrier: str):
         if not csv_path:
             return
-        columns = read_columns(csv_path)
+        columns = read_columns(csv_path, cache=table_cache)
         if not {"year", "period"}.issubset(columns):
             raise ValueError(f"{csv_path} missing 'year'/'period' columns for demand bus discovery.")
         demand_cols = [c for c in columns if c not in {"year", "period"}]
@@ -228,7 +229,7 @@ def load_bus(
 
     # Transport buses (from zones input)
     if transport_zones_path:
-        df_tp = read_table(transport_zones_path)
+        df_tp = read_table(transport_zones_path, cache=table_cache)
         if not df_tp.empty:
             required_tp = {"transport_sector_bus", "tech", "fuel_type"}
             missing_tp = required_tp - set(df_tp.columns)

@@ -10,7 +10,7 @@ import pandas as pd
 from data_models.SystemSets import SystemSets
 from data_models.Demand import Demand
 from data_models.Bus import Bus
-from data_loaders.helpers.io import read_table
+from data_loaders.helpers.io import TableCache, read_table
 from data_loaders.helpers.transport_utils import load_ev_inputs, _is_electric_transport_tech
 
 Key = Tuple[str, str, str, str, int, int]  # (system, region, bus, carrier, period, year)
@@ -29,6 +29,7 @@ def load_demand(
     buses: Optional[Bus] = None,
     buses_path: Optional[str] = None,
     existing_demand: Optional[Demand] = None,
+    table_cache: Optional[TableCache] = None,
 ) -> Demand:
     """Load demand time series and aggregate into a Demand model.
 
@@ -74,7 +75,7 @@ def load_demand(
             )
 
     if buses_path:
-        df_buses = read_table(buses_path)
+        df_buses = read_table(buses_path, cache=table_cache)
         required_buses_cols = {"bus", "carrier"}
         missing_buses_cols = required_buses_cols - set(df_buses.columns)
         if missing_buses_cols:
@@ -123,7 +124,7 @@ def load_demand(
         if path is None:
             return {}
 
-        df = read_table(path)
+        df = read_table(path, cache=table_cache)
 
         # required columns
         for col in ("year", "period"):
