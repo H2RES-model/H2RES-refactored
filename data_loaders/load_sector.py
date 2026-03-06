@@ -19,11 +19,13 @@ from data_models.SystemParameters import (
 )
 from data_loaders.helpers.io import TableCache
 from data_loaders.helpers.model_factory import build_model
+from data_loaders.helpers.transport_integration import transport_storage_units
 from data_loaders.load_sets import load_sets
 from data_loaders.load_generators import load_generators
 from data_loaders.load_storage import load_storage
 from data_loaders.load_bus import load_bus
 from data_loaders.load_demand import load_demand
+from data_loaders.load_transport import load_transport
 
 
 def load_sector(
@@ -137,6 +139,7 @@ def load_sector(
     transport_zones_for_sector = transport_zones_path if transport_enabled else None
     transport_availability_for_sector = transport_availability_path if transport_enabled else None
     transport_demand_for_sector = transport_demand_path if transport_enabled else None
+    transport = None
 
     if existing_system is None:
         required = {
@@ -180,6 +183,29 @@ def load_sector(
             existing_sets=existing_system.sets if existing_system else None,
             table_cache=table_cache,
         )
+        if transport_enabled and all(
+            [
+                transport_general_params_for_sector,
+                transport_zones_for_sector,
+                transport_availability_for_sector,
+                transport_demand_for_sector,
+            ]
+        ):
+            transport = load_transport(
+                sets=sets,
+                general_params_path=transport_general_params_for_sector,
+                zones_params_path=transport_zones_for_sector,
+                availability_path=transport_availability_for_sector,
+                demand_path=transport_demand_for_sector,
+                table_cache=table_cache,
+            )
+            transport_storage = transport_storage_units(transport)
+            if transport_storage:
+                sets = sets.model_copy(
+                    update={
+                        "storage_units": sorted(set(sets.storage_units).union(transport_storage)),
+                    }
+                )
 
     # --------------------------------------------------------------
     # 2. Buses (uses demand headers + csv templates)
@@ -201,16 +227,29 @@ def load_sector(
             raise ValueError(
                 "powerplants_path and storage_path are required to load/update buses."
             )
+        allowed_carriers_map = {
+            "electricity": ["electricity"],
+            "heating": ["heat"],
+            "cooling": ["cooling"],
+            "industry": ["industry_heat"],
+        }
+        demand_paths: dict[str, str] = {}
+        for carrier, path in (
+            ("electricity", electricity_demand_path),
+            ("heat", heating_demand_path),
+            ("cooling", cooling_demand_path),
+            ("industry_heat", industry_demand_path),
+        ):
+            if path:
+                demand_paths[carrier] = path
         buses = load_bus(
             powerplants_path=powerplants_path,
             storage_path=storage_path,
             buses_path=buses_path,
-            electricity_demand_path=electricity_demand_path,
-            heating_demand_path=heating_demand_path,
-            cooling_demand_path=cooling_demand_path,
-            industry_demand_path=industry_demand_path,
-            transport_zones_path=transport_zones_for_sector,
-            sector=sector,
+            demand_paths=demand_paths,
+            transport_static=transport.static if transport is not None else None,
+            transport_zones_path=transport_zones_for_sector if transport is None else None,
+            allowed_carriers=allowed_carriers_map.get(sector_key),
             sets=sets,
             existing_buses=existing_system.bus if existing_system else None,
             table_cache=table_cache,
@@ -257,13 +296,14 @@ def load_sector(
             powerplants_path=powerplants_path,
             storage_path=storage_path or powerplants_path,
             inflow_path=inflow_path,
+            transport=transport,
             transport_general_params_path=transport_general_params_for_sector,
             transport_zones_path=transport_zones_for_sector,
             transport_availability_path=transport_availability_for_sector,
             transport_demand_path=transport_demand_for_sector,
             write_transport_storage_units=write_transport_storage_units,
             buses_path=buses_path,
-            sector=sector,
+            include_chp_tes=sector_key != "electricity",
             sets=sets,
             buses=buses,
             existing_storage=existing_system.storage if existing_system else None,
@@ -294,12 +334,19 @@ def load_sector(
         demand_heating_path = None
         demand_cooling_path = None
 
+    carrier_paths: dict[str, str] = {}
+    for carrier, path in (
+        ("electricity", demand_electricity_path),
+        ("heat", demand_heating_path),
+        ("cooling", demand_cooling_path),
+        ("industry_heat", demand_industry_path),
+    ):
+        if path:
+            carrier_paths[carrier] = path
+
     if existing_system and not any(
         [
-            demand_electricity_path,
-            demand_heating_path,
-            demand_cooling_path,
-            demand_industry_path,
+            *carrier_paths.values(),
             transport_demand_for_sector,
         ]
     ):
@@ -307,10 +354,8 @@ def load_sector(
     else:
         demand = load_demand(
             sets=sets,
-            electricity_path=demand_electricity_path or None, # type: ignore
-            heating_path=demand_heating_path or None,
-            cooling_path=demand_cooling_path or None,
-            industry_path=demand_industry_path or None,
+            carrier_paths=carrier_paths,
+            transport=transport,
             transport_demand_path=transport_demand_for_sector,
             transport_general_params_path=transport_general_params_for_sector,
             transport_zones_path=transport_zones_for_sector,

@@ -1,35 +1,45 @@
-| Attribute | Type | Unit | Description | Status |
-| --- | --- | --- | --- | --- |
-| `unit` | List[str] | n.a. | All generator / converter units in the system. | mandatory |
-| `system` | Dict[str, str] | n.a. | System/scenario tag (column 'system' in powerplants.csv), e.g. country code. | optional |
-| `region` | Dict[str, str] | n.a. | Region/zone for the unit (column 'region' in powerplants.csv). | optional |
-| `tech` | Dict[str, str] | n.a. | Technology label (e.g. 'CCGT', 'WindPP', 'PV', 'CHP', 'HDAM_turbine', 'HPHS_pump'). | mandatory |
-| `fuel` | Dict[str, str] | n.a. | Fuel type (e.g. 'Gas', 'Coal', 'Wind', 'Solar', 'Water', 'Electricity'). | mandatory |
-| `unit_type` | Dict[str, typing.Literal['supply', 'conversion']] | n.a. | Modelling role of the unit: 'supply' = fuel→output with implicit input carrier; 'conversion' = explicit carrier_in→carrier_out (e.g. HP, ETES pump, PHS pump). | optional |
-| `carrier_in` | Dict[str, Union[str, NoneType]] | n.a. | Input carrier for conversion units (e.g. 'Electricity' for HP, ETES pumps). | optional |
-| `carrier_out` | Dict[str, str] | n.a. | Output carrier (e.g. 'Electricity', 'Heat', 'H2'). | optional |
-| `bus_in` | Dict[str, Union[str, NoneType]] | n.a. | Bus where input power is drawn (for conversion units). | optional |
-| `bus_out` | Dict[str, str] | n.a. | Bus where output power is injected. | optional |
-| `p_nom` | Dict[str, float] | MW | Existing/committed nominal output power capacity [MW]. | mandatory |
-| `p_nom_max` | Dict[str, float] | MW | Maximum allowed power capacity [MW] (upper bound on investment). | optional |
-| `cap_factor` | Dict[str, float] | p.u. | Capacity factor of unit. | mandatory |
-| `capital_cost` | Dict[str, float] | EUR/MW | Investment cost per unit of power capacity [€/MW]. | mandatory |
-| `lifetime` | Dict[str, int] | years | Technical/economic lifetime of the power asset [years]. | mandatory |
-| `decom_start_existing` | Dict[str, int] | year | Year when existing capacity starts decommissioning. | mandatory |
-| `decom_start_new` | Dict[str, int] | year | Year when newly built capacity starts decommissioning. | mandatory |
-| `final_cap` | Dict[str, float] | MW | Residual power capacity at end of horizon [MW]. | mandatory |
-| `efficiency` | Dict[str, float] | p.u. | Static efficiency per unit (output/input). For fuel-based generators, fuel→power; for HP, power→heat, etc. | mandatory |
-| `efficiency_ts` | Dict[Tuple[str, int, int], float] | p.u. | Time-varying efficiency (e.g. COP) by (unit, period, year). | optional |
-| `co2_intensity` | Dict[str, float] | tCO2/MWh_output | CO2 intensity attributed to output [tCO2/MWh_output]. | mandatory |
-| `var_cost_no_fuel` | Dict[str, float] | EUR/MWh_output | Non-fuel variable O&M cost [€/MWh_output]. | mandatory |
-| `ramp_up_rate` | Dict[str, float] | MW/period or p.u. | Maximum ramp-up rate [MW/period or pu]. | mandatory |
-| `ramp_down_rate` | Dict[str, float] | MW/period or p.u. | Maximum ramp-down rate [MW/period or pu]. | mandatory |
-| `ramping_cost` | Dict[str, float] | n.a. | Ramping cost coefficient (optional). | optional |
-| `chp_power_to_heat` | Dict[str, float] | p.u. | Back-pressure power-to-heat ratio for CHP units. | optional |
-| `chp_power_loss_factor` | Dict[str, float] | p.u. | Slope of condensing-to-heat trade-off for extraction CHP. | optional |
-| `chp_max_heat` | Dict[str, float] | MW_heat | Maximum thermal output [MW_heat] for CHP units. | optional |
-| `chp_type` | Dict[str, str] | n.a. | CHP configuration label (e.g. 'backpressure', 'extraction'). | optional |
-| `bus_out_2` | Dict[str, Union[str, NoneType]] | n.a. | Second output bus, e.g. to represent heat output of CHP units. | optional |
-| `carrier_out_2` | Dict[str, Union[str, NoneType]] | n.a. | Carrier of second output, e.g. heat for CHP units. | optional |
-| `p_t` | Dict[Tuple[str, int, int], float] | p.u. | Normalized profile (0–1) by (unit, period, year), typically for renewables or availability limits. | optional |
-| `var_cost` | Dict[Tuple[str, int, int], float] | EUR/MWh_output | Full variable cost [€/MWh_output] including fuel, by (unit, period, year). Typically built from fuel_price(fuel, t) and efficiency. | optional |
+| Table | Index | Column | Type | Unit | Status | Description |
+| --- | --- | --- | --- | --- | --- | --- |
+| `static` | unit | `unit` | string | n.a. | mandatory | Generator/converter unit identifier. |
+| `static` | unit | `system` | string | n.a. | optional | System/scenario tag. |
+| `static` | unit | `region` | string | n.a. | optional | Region/zone identifier. |
+| `static` | unit | `tech` | string | n.a. | mandatory | Technology label. |
+| `static` | unit | `fuel` | string | n.a. | mandatory | Fuel type. |
+| `static` | unit | `unit_type` | string | n.a. | optional | Supply/conversion role. |
+| `static` | unit | `carrier_in` | string | n.a. | optional | Input carrier. |
+| `static` | unit | `carrier_out` | string | n.a. | optional | Output carrier. |
+| `static` | unit | `bus_in` | string | n.a. | optional | Input bus. |
+| `static` | unit | `bus_out` | string | n.a. | optional | Output bus. |
+| `static` | unit | `bus_out_2` | string | n.a. | optional | Secondary output bus. |
+| `static` | unit | `carrier_out_2` | string | n.a. | optional | Secondary output carrier. |
+| `static` | unit | `p_nom` | float | MW | mandatory | Existing output power capacity. |
+| `static` | unit | `p_nom_max` | float | MW | optional | Maximum output power capacity. |
+| `static` | unit | `cap_factor` | float | p.u. | mandatory | Capacity factor. |
+| `static` | unit | `capital_cost` | float | EUR/MW | mandatory | Power investment cost. |
+| `static` | unit | `lifetime` | int | years | mandatory | Technical/economic lifetime. |
+| `static` | unit | `decom_start_existing` | int | year | mandatory | Existing decommissioning start year. |
+| `static` | unit | `decom_start_new` | int | year | mandatory | New-build decommissioning start year. |
+| `static` | unit | `final_cap` | float | MW | mandatory | Residual power capacity at end of horizon. |
+| `static` | unit | `efficiency` | float | p.u. | mandatory | Static efficiency. |
+| `static` | unit | `co2_intensity` | float | tCO2/MWh_output | mandatory | CO2 intensity on output. |
+| `static` | unit | `var_cost_no_fuel` | float | EUR/MWh_output | mandatory | Non-fuel variable cost. |
+| `static` | unit | `ramp_up_rate` | float | MW/period or p.u. | mandatory | Ramp-up rate. |
+| `static` | unit | `ramp_down_rate` | float | MW/period or p.u. | mandatory | Ramp-down rate. |
+| `static` | unit | `ramping_cost` | float | n.a. | optional | Ramping cost coefficient. |
+| `static` | unit | `chp_power_to_heat` | float | p.u. | optional | CHP power-to-heat ratio. |
+| `static` | unit | `chp_power_loss_factor` | float | p.u. | optional | CHP condensing-to-heat slope. |
+| `static` | unit | `chp_max_heat` | float | MW_heat | optional | Maximum CHP heat output. |
+| `static` | unit | `chp_type` | string | n.a. | optional | CHP configuration type. |
+| `p_t` | - | `unit` | string | n.a. | mandatory | Generator/converter unit identifier. |
+| `p_t` | - | `period` | int | index | mandatory | Time period index. |
+| `p_t` | - | `year` | int | year | mandatory | Model year. |
+| `p_t` | - | `p_t` | float | p.u. | mandatory | Availability/profile value. |
+| `var_cost` | - | `unit` | string | n.a. | mandatory | Generator/converter unit identifier. |
+| `var_cost` | - | `period` | int | index | mandatory | Time period index. |
+| `var_cost` | - | `year` | int | year | mandatory | Model year. |
+| `var_cost` | - | `var_cost` | float | EUR/MWh_output | mandatory | Full variable cost. |
+| `efficiency_ts` | - | `unit` | string | n.a. | mandatory | Generator/converter unit identifier. |
+| `efficiency_ts` | - | `period` | int | index | mandatory | Time period index. |
+| `efficiency_ts` | - | `year` | int | year | mandatory | Model year. |
+| `efficiency_ts` | - | `efficiency_ts` | float | p.u. | mandatory | Time-varying efficiency. |
+| `field` | - | `dynamic` | Dict[str, DataFrame] | table-map | optional | Separate time-varying generator tables keyed by attribute name. |

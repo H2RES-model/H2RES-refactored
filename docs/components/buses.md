@@ -10,17 +10,18 @@ Buses also keep track of which generator and storage units are connected.
 
 ## Key fields
 
+- `static`: indexed bus metadata table.
+- `attachments`: long table of bus-to-unit links.
 - `name`: list of all bus IDs.
-- `system`: optional system/country tag for each bus.
-- `region`: optional region/zone for each bus.
-- `carrier`: carrier assigned to each bus (e.g. Electricity, Heat).
-- `generators_at_bus`: mapping of bus -> list of generator/converter units.
-- `storage_at_bus`: mapping of bus -> list of storage units.
+- `system`: bus-level system/country series.
+- `region`: bus-level region/zone series.
+- `carrier`: bus-level carrier series.
 
-## Validation rules
+## Query helpers
 
-- All dictionary keys must be known bus IDs.
-- `generators_at_bus` and `storage_at_bus` values must be lists.
+- `units(bus, component=None, role=None)`: return attachment rows for a bus.
+- `buses_for_carrier(carrier)`: return bus IDs for one carrier.
+- `carrier_of(bus)`: return the carrier assigned to one bus.
 
 ## Typical source files
 
@@ -34,6 +35,7 @@ from data_models.Bus import Bus
 
 bus = Bus.from_csv("data/buses.csv")
 print(bus.name[:5])
+print(bus.units("HR_EL", component="generator").head())
 ```
 
 ## Field summary

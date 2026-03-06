@@ -241,35 +241,35 @@ def _read_transport_ts(path: str, value_name: str) -> pd.DataFrame:
 
     meta = _extract_meta_maps(df_raw, header_row)
     data = df_raw.iloc[header_row + 1 :].copy()
-
-    rows: List[Dict[str, object]] = []
-    ncols = data.shape[1]
-    for j in range(2, ncols):
-        sector = meta.get("transport_sector_bus", {}).get(j)
-        if not sector:
-            continue
-        system = meta.get("system", {}).get(j, "")
-        region = meta.get("region", {}).get(j, "")
-        for _, r in data.iterrows():
-            y = r.iloc[0]
-            p = r.iloc[1]
-            v = r.iloc[j]
-            if pd.isna(y) or pd.isna(p) or pd.isna(v):
-                continue
-            rows.append(
-                {
-                    "system": str(system),
-                    "region": str(region),
-                    "transport_sector_bus": str(sector),
-                    "year": int(float(y)),
-                    "period": int(float(p)),
-                    value_name: float(v),
-                }
-            )
-    if not rows:
+    valid_cols = [j for j in range(2, data.shape[1]) if meta.get("transport_sector_bus", {}).get(j)]
+    if not valid_cols:
         return pd.DataFrame(columns=["system", "region", "transport_sector_bus", "year", "period", value_name])
-    out = pd.DataFrame(rows)
-    return out
+
+    value_cols = list(valid_cols)
+    melted = data[[0, 1] + value_cols].melt(
+        id_vars=[0, 1],
+        value_vars=value_cols,
+        var_name="column_idx",
+        value_name=value_name,
+    )
+    melted = melted.dropna(subset=[0, 1, value_name])
+    if melted.empty:
+        return pd.DataFrame(columns=["system", "region", "transport_sector_bus", "year", "period", value_name])
+
+    melted["column_idx"] = melted["column_idx"].astype(int)
+    meta_df = pd.DataFrame(
+        {
+            "column_idx": value_cols,
+            "system": [str(meta.get("system", {}).get(j, "")) for j in value_cols],
+            "region": [str(meta.get("region", {}).get(j, "")) for j in value_cols],
+            "transport_sector_bus": [str(meta["transport_sector_bus"][j]) for j in value_cols],
+        }
+    )
+    out = melted.merge(meta_df, on="column_idx", how="left", validate="many_to_one")
+    out["year"] = out[0].astype(float).astype(int)
+    out["period"] = out[1].astype(float).astype(int)
+    out[value_name] = pd.to_numeric(out[value_name], errors="raise")
+    return out[["system", "region", "transport_sector_bus", "year", "period", value_name]]
 
 
 def _normalize_params(df_params: pd.DataFrame, params_path: str) -> pd.DataFrame:
@@ -421,13 +421,13 @@ def load_ev_inputs(
     zones_params_path: str,
     ev_availability_path: Optional[str] = None,
     ev_demand_path: Optional[str] = None,
-) -> Tuple[pd.DataFrame, Dict[UPY, float], Dict[UPY, float]]:
+) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """Load transport params and map TS by transport_sector to each unit.
 
     Returns:
         params_df: Normalized transport rows (all units).
-        ev_availability: dict[(unit, period, year)] -> availability factor (storage units only).
-        ev_demand_profile: dict[(unit, period, year)] -> demand profile factor.
+        ev_availability: long table with unit, period, year, availability.
+        ev_demand_profile: long table with unit, period, year, ev_demand.
     """
     df_params_raw = _load_transport_inputs(
         general_params_path=general_params_path,
@@ -483,206 +483,149 @@ def load_ev_inputs(
     params_df["ev_demand_unit"] = demand_unit
     params_df["sector_total_veh"] = sector_total_list
 
-    ev_availability: Dict[UPY, float] = {}
-    ev_demand_profile: Dict[UPY, float] = {}
-
     av_long = _read_transport_ts(ev_availability_path, "ev_availability") if ev_availability_path else pd.DataFrame()
     dem_long = _read_transport_ts(ev_demand_path, "ev_demand") if ev_demand_path else pd.DataFrame()
 
     params_df_storage = _filter_storage_electric(params_df)
+    join_cols = ["system", "region", "transport_sector_bus"]
+    for frame in (av_long, dem_long):
+        if not frame.empty:
+            for col in join_cols:
+                frame[col] = frame[col].astype(str).str.lower().str.strip()
 
-    # Map each unit to its sector profile, filtered by unit system/region.
-    for _, row in params_df_storage.iterrows():
-        unit = str(row["name"])
-        sector = str(row["transport_sector_bus"])
-        system = str(row["system"])
-        region = str(row["region"])
-
-        if not av_long.empty:
-            subset_av = av_long[
-                (av_long["transport_sector_bus"].astype(str).str.lower() == sector.lower())
-                & (av_long["system"].astype(str).str.lower() == system.lower())
-                & (av_long["region"].astype(str).str.lower() == region.lower())
-            ]
-            if subset_av.empty:
-                raise ValueError(
-                    f"{ev_availability_path} has no profile for transport_sector_bus='{sector}', "
-                    f"system='{system}', region='{region}'."
-                )
-            for _, tsr in subset_av.iterrows():
-                key = (unit, int(tsr["period"]), int(tsr["year"]))
-                ev_availability[key] = float(tsr["ev_availability"])
-
-        # availability only for storage units
-
-    # Demand profile for ALL transport rows (including non-storage).
-    for _, row in params_df.iterrows():
-        unit = str(row["name"])
-        sector = str(row["transport_sector_bus"])
-        system = str(row["system"])
-        region = str(row["region"])
-        if not dem_long.empty:
-            subset_dem = dem_long[
-                (dem_long["transport_sector_bus"].astype(str).str.lower() == sector.lower())
-                & (dem_long["system"].astype(str).str.lower() == system.lower())
-                & (dem_long["region"].astype(str).str.lower() == region.lower())
-            ]
-            if subset_dem.empty:
-                raise ValueError(
-                    f"{ev_demand_path} has no profile for transport_sector_bus='{sector}', "
-                    f"system='{system}', region='{region}'."
-                )
-            for _, tsr in subset_dem.iterrows():
-                key = (unit, int(tsr["period"]), int(tsr["year"]))
-                ev_demand_profile[key] = float(tsr["ev_demand"])
-
-    if ev_availability:
-        bad = [k for k, v in ev_availability.items() if v < 0 or v > 1]
-        if bad:
-            raise ValueError(
-                f"{ev_availability_path} ev_availability must be in [0,1] for keys: {bad[:5]}"
-            )
-    if ev_demand_profile:
-        bad = [k for k, v in ev_demand_profile.items() if v < 0]
-        if bad:
-            raise ValueError(
-                f"{ev_demand_path} ev_demand must be >= 0 for keys: {bad[:5]}"
-            )
-    if ev_availability_path and not ev_availability:
+    ev_availability = pd.DataFrame(columns=["unit", "period", "year", "availability"])
+    if not av_long.empty and not params_df_storage.empty:
+        storage_join = params_df_storage[["name", "system", "region", "transport_sector_bus"]].copy()
+        for col in join_cols:
+            storage_join[col] = storage_join[col].astype(str).str.lower().str.strip()
+        ev_availability = storage_join.merge(av_long, on=join_cols, how="left", validate="many_to_many")
+        if ev_availability["ev_availability"].isna().any():
+            missing = ev_availability[ev_availability["ev_availability"].isna()][["name", "system", "region", "transport_sector_bus"]].drop_duplicates()
+            raise ValueError(f"{ev_availability_path} has no matching availability profiles: {missing.to_dict('records')}")
+        ev_availability = ev_availability.rename(columns={"name": "unit", "ev_availability": "availability"})
+        if ((ev_availability["availability"] < 0) | (ev_availability["availability"] > 1)).any():
+            raise ValueError(f"{ev_availability_path} ev_availability must be in [0,1].")
+        ev_availability = ev_availability[["unit", "period", "year", "availability"]].reset_index(drop=True)
+    elif ev_availability_path:
         raise ValueError(f"{ev_availability_path} has no matching availability profiles.")
-    if ev_demand_path and not ev_demand_profile:
+
+    ev_demand_profile = pd.DataFrame(columns=["unit", "period", "year", "ev_demand"])
+    if not dem_long.empty and not params_df.empty:
+        demand_join = params_df[["name", "system", "region", "transport_sector_bus"]].copy()
+        for col in join_cols:
+            demand_join[col] = demand_join[col].astype(str).str.lower().str.strip()
+        ev_demand_profile = demand_join.merge(dem_long, on=join_cols, how="left", validate="many_to_many")
+        if ev_demand_profile["ev_demand"].isna().any():
+            missing = ev_demand_profile[ev_demand_profile["ev_demand"].isna()][["name", "system", "region", "transport_sector_bus"]].drop_duplicates()
+            raise ValueError(f"{ev_demand_path} has no matching demand profiles: {missing.to_dict('records')}")
+        if (ev_demand_profile["ev_demand"] < 0).any():
+            raise ValueError(f"{ev_demand_path} ev_demand must be >= 0.")
+        ev_demand_profile = ev_demand_profile.rename(columns={"name": "unit"})
+        ev_demand_profile = ev_demand_profile[["unit", "period", "year", "ev_demand"]].reset_index(drop=True)
+    elif ev_demand_path:
         raise ValueError(f"{ev_demand_path} has no matching demand profiles.")
 
-    # Validate that availability and demand cover the same horizon.
-    if ev_availability and ev_demand_profile:
-        years_av = {y for (_, _, y) in ev_availability.keys()}
-        years_dem = {y for (_, _, y) in ev_demand_profile.keys()}
+    if not ev_availability.empty and not ev_demand_profile.empty:
+        years_av = set(ev_availability["year"].astype(int).tolist())
+        years_dem = set(ev_demand_profile["year"].astype(int).tolist())
         if years_av != years_dem:
             raise ValueError(
                 "EV availability and demand years do not match. "
                 f"availability years={sorted(years_av)}, demand years={sorted(years_dem)}"
             )
-        periods_av = {p for (_, p, _) in ev_availability.keys()}
-        periods_dem = {p for (_, p, _) in ev_demand_profile.keys()}
+        periods_av = set(ev_availability["period"].astype(int).tolist())
+        periods_dem = set(ev_demand_profile["period"].astype(int).tolist())
         if periods_av != periods_dem:
             raise ValueError(
                 "EV availability and demand periods do not match. "
                 f"availability periods={sorted(periods_av)}, demand periods={sorted(periods_dem)}"
             )
-        grid_av = {(p, y) for (_, p, y) in ev_availability.keys()}
-        grid_dem = {(p, y) for (_, p, y) in ev_demand_profile.keys()}
-        if grid_av != grid_dem:
-            raise ValueError(
-                "EV availability and demand (period, year) grids do not match."
-            )
 
     return params_df, ev_availability, ev_demand_profile
 
 
-def build_transport_storage_units_csv(
+def build_transport_storage_units_table(
     *,
     general_params_path: str,
     zones_params_path: str,
-    output_path: str,
     buses: Iterable[str] | None = None,
-) -> None:
-    """Create transport_storage_units.csv from transport inputs.
-
-    The generated table keeps only transport-specific storage fields.
-    Connectivity fields like carrier_in/carrier_out/bus_out are filled by
-    the storage loader defaults.
-    """
+) -> pd.DataFrame:
+    """Create the transport storage template as an in-memory DataFrame."""
     df_raw = _load_transport_inputs(
         general_params_path=general_params_path,
         zones_params_path=zones_params_path,
     )
     params_df_all = _normalize_params(df_raw, zones_params_path)
-    params_df = _filter_storage_electric(params_df_all)
+    params_df = _filter_storage_electric(params_df_all).copy()
+    cols = [
+        "system",
+        "region",
+        "name",
+        "tech",
+        "carrier_in",
+        "carrier_out",
+        "bus_in",
+        "bus_out",
+        "e_nom",
+        "e_nom_max",
+        "e_min",
+        "duration_charge",
+        "duration_discharge",
+        "efficiency_charge",
+        "efficiency_discharge",
+        "standby_loss",
+        "capital_cost_energy",
+        "capital_cost_power_charge",
+        "capital_cost_power_discharge",
+        "lifetime",
+        "spillage_cost",
+    ]
     if params_df.empty:
-        # No storage-capable transport units; write empty template and return.
-        cols = [
-            "system",
-            "region",
-            "name",
-            "tech",
-            "bus_in",
-            "e_nom",
-            "e_nom_max",
-            "e_min",
-            "duration_charge",
-            "duration_discharge",
-            "efficiency_charge",
-            "efficiency_discharge",
-            "standby_loss",
-            "capital_cost_energy",
-            "capital_cost_power_charge",
-            "capital_cost_power_discharge",
-            "lifetime",
-            "spillage_cost",
-        ]
-        pd.DataFrame(columns=cols).to_csv(output_path, index=False)
-        return
+        return pd.DataFrame(columns=cols)
 
     known_buses = {str(b).strip().lower() for b in buses} if buses is not None else set()
+    params_df["bus_in"] = params_df["bus_in"].astype(str).str.strip()
+    if known_buses:
+        bad = ~params_df["bus_in"].str.lower().isin(known_buses)
+        if bad.any():
+            bad_row = params_df.loc[bad].iloc[0]
+            excel_row = int(bad_row.name) + 2 if isinstance(bad_row.name, (int, float)) else None
+            line_txt = f", row {excel_row}" if excel_row is not None else ""
+            raise ValueError(
+                f"{zones_params_path}{line_txt}: bus_in '{bad_row['bus_in']}' not found in data/buses.csv"
+            )
 
-    rows: List[Dict[str, object]] = []
-    for _, row in params_df.iterrows():
-        unit = str(row["name"])
-        bus_in = str(row.get("bus_in", "")).strip()
-        excel_row = int(row.name) + 2 if isinstance(row.name, (int, float)) else None
+    params_df["fleet_units"] = pd.to_numeric(params_df["fleet_units"], errors="raise")
+    params_df["average_bat"] = pd.to_numeric(params_df["average_bat"], errors="raise")
+    params_df["average_ch_rate"] = pd.to_numeric(params_df["average_ch_rate"], errors="raise")
+    params_df["ev_sto_min"] = pd.to_numeric(params_df.get("ev_sto_min", 0.0), errors="coerce").fillna(0.0)
+    params_df["ev_grid_eff"] = pd.to_numeric(params_df["ev_grid_eff"], errors="raise")
+    params_df["V2G_cost"] = pd.to_numeric(params_df["V2G_cost"], errors="raise")
+    params_df["life_time"] = pd.to_numeric(params_df.get("life_time", 0), errors="coerce").fillna(0).astype(int)
+    max_investment = pd.to_numeric(params_df.get("max_investment"), errors="coerce")
+    params_df["max_veh"] = max_investment.fillna(params_df["fleet_units"])
+    params_df.loc[params_df["max_veh"] < params_df["fleet_units"], "max_veh"] = params_df["fleet_units"]
+    if (params_df["average_ch_rate"] <= 0).any():
+        bad_name = params_df.loc[params_df["average_ch_rate"] <= 0, "name"].astype(str).iloc[0]
+        raise ValueError(f"{zones_params_path} average_ch_rate must be > 0 for '{bad_name}'.")
 
-        # Validate buses if a list was provided.
-        if known_buses:
-            if bus_in.lower() not in known_buses:
-                line_txt = f", row {excel_row}" if excel_row is not None else ""
-                raise ValueError(
-                    f"{zones_params_path}{line_txt}: bus_in '{bus_in}' not found in data/buses.csv"
-                )
+    params_df["e_nom"] = params_df["fleet_units"] * params_df["average_bat"] / 1000.0
+    params_df["e_nom_max"] = params_df["max_veh"] * params_df["average_bat"] / 1000.0
+    params_df["e_min"] = params_df["ev_sto_min"] * params_df["e_nom"]
+    params_df["carrier_in"] = ""
+    params_df["carrier_out"] = ""
+    params_df["bus_out"] = ""
+    params_df["duration_charge"] = params_df["average_bat"] / params_df["average_ch_rate"]
+    params_df["duration_discharge"] = params_df["duration_charge"]
+    params_df["efficiency_charge"] = params_df["ev_grid_eff"]
+    params_df["efficiency_discharge"] = params_df["ev_grid_eff"]
+    params_df["standby_loss"] = 0.0
+    params_df["capital_cost_energy"] = 0.0
+    params_df["capital_cost_power_charge"] = 0.0
+    params_df["capital_cost_power_discharge"] = params_df["V2G_cost"]
+    params_df["lifetime"] = params_df["life_time"]
+    params_df["spillage_cost"] = 0.0
 
-        fleet_units = float(row["fleet_units"])
-        average_bat = float(row["average_bat"])
-        average_ch_rate = float(row["average_ch_rate"])
-        max_inv_raw = row.get("max_investment", None)
-        max_veh = float(max_inv_raw) if pd.notna(max_inv_raw) else fleet_units
-
-        if average_ch_rate <= 0:
-            raise ValueError(f"{zones_params_path} average_ch_rate must be > 0 for '{unit}'.")
-        if max_veh < fleet_units:
-            max_veh = fleet_units
-
-        # Convert vehicle-level parameters into system-scale storage values.
-        e_nom = fleet_units * average_bat / 1000.0
-        e_nom_max = max_veh * average_bat / 1000.0
-        e_min = float(row.get("ev_sto_min", 0.0)) * e_nom
-        duration = average_bat / average_ch_rate
-        eff = float(row["ev_grid_eff"])
-        v2g_cost = float(row["V2G_cost"])
-        lifetime = int(float(row.get("life_time", 0) or 0))
-
-        rows.append(
-            {
-                "system": str(row["system"]),
-                "region": str(row["region"]),
-                "name": unit,
-                "tech": str(row["tech"]),
-                "bus_in": bus_in,
-                "e_nom": e_nom,
-                "e_nom_max": e_nom_max,
-                "e_min": e_min,
-                "duration_charge": duration,
-                "duration_discharge": duration,
-                "efficiency_charge": eff,
-                "efficiency_discharge": eff,
-                "standby_loss": 0.0,
-                "capital_cost_energy": 0.0,
-                "capital_cost_power_charge": 0.0,
-                "capital_cost_power_discharge": v2g_cost,
-                "lifetime": lifetime,
-                "spillage_cost": 0.0,
-            }
-        )
-
-    out = pd.DataFrame(rows)
-    out.to_csv(output_path, index=False)
+    return params_df[cols].reset_index(drop=True)
 
 

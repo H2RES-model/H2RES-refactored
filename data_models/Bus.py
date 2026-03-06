@@ -1,133 +1,178 @@
 from __future__ import annotations
 
-from typing import Dict, List, Optional
+from typing import Any, ClassVar, Dict, List, Optional
+
 import pandas as pd
-from pydantic import BaseModel, Field, field_validator, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+from data_models.table_schema import (
+    ColumnSpec,
+    TableSpec,
+    empty_table,
+    ensure_dataframe,
+    normalize_dataframe,
+    validate_unique_keys,
+)
 
 BusId = str
-SystemId = str
-RegionId = str
-Carrier = str
-Unit = str
 
 
 class Bus(BaseModel):
-    """
-    Network buses with connected units and their carrier.
-    """
+    """Network buses and unit attachments."""
 
-    name: List[BusId] = Field(
-        default_factory=list,
-        description="All buses in the system.",
-        json_schema_extra={"unit": "n.a.", "status": "optional"},
+    TABLE_SPECS: ClassVar[Dict[str, TableSpec]] = {
+        "static": TableSpec(
+            name="bus.static",
+            description="Static bus metadata indexed by bus identifier.",
+            index=("bus",),
+            columns=(
+                ColumnSpec("bus", "string", "Bus identifier.", status="mandatory"),
+                ColumnSpec("system", "string", "System/country tag for the bus."),
+                ColumnSpec("region", "string", "Region/zone tag for the bus."),
+                ColumnSpec("carrier", "string", "Carrier assigned to the bus.", status="mandatory"),
+            ),
+        ),
+        "attachments": TableSpec(
+            name="bus.attachments",
+            description="Units attached to each bus by component role.",
+            columns=(
+                ColumnSpec("bus", "string", "Bus identifier.", status="mandatory"),
+                ColumnSpec("component", "string", "Attached component collection name.", status="mandatory"),
+                ColumnSpec("unit", "string", "Attached unit identifier.", status="mandatory"),
+                ColumnSpec("role", "string", "Optional role label for the attachment."),
+            ),
+        ),
+    }
+
+    static: pd.DataFrame = Field(
+        default_factory=lambda: empty_table(Bus.TABLE_SPECS["static"]),
+        description="Indexed bus metadata table.",
+        json_schema_extra={"unit": "table", "status": "mandatory", "table_spec": "static"},
     )
-    system: Dict[BusId, SystemId] = Field(
-        default_factory=dict,
-        description="System/country tag for each bus.",
-        json_schema_extra={"unit": "n.a.", "status": "optional"},
-    )
-    region: Dict[BusId, RegionId] = Field(
-        default_factory=dict,
-        description="Region/zone for each bus.",
-        json_schema_extra={"unit": "n.a.", "status": "optional"},
-    )
-    carrier: Dict[BusId, Carrier] = Field(
-        default_factory=dict,
-        description="Carrier assigned to each bus.",
-        json_schema_extra={"unit": "n.a.", "status": "optional"},
-    )
-    generators_at_bus: Dict[BusId, List[Unit]] = Field(
-        default_factory=dict,
-        description="Generator/converter units on each bus.",
-        json_schema_extra={"unit": "n.a.", "status": "optional"},
-    )
-    storage_at_bus: Dict[BusId, List[Unit]] = Field(
-        default_factory=dict,
-        description="Storage units on each bus.",
-        json_schema_extra={"unit": "n.a.", "status": "optional"},
+    attachments: pd.DataFrame = Field(
+        default_factory=lambda: empty_table(Bus.TABLE_SPECS["attachments"]),
+        description="Bus-to-unit attachment table.",
+        json_schema_extra={"unit": "table", "status": "optional", "table_spec": "attachments"},
     )
 
-    model_config = ConfigDict(frozen=True, extra="forbid")
+    model_config = ConfigDict(frozen=True, extra="forbid", arbitrary_types_allowed=True)
 
-    @field_validator("system", "region", "carrier", "generators_at_bus", "storage_at_bus", mode="after")
-    def _keys_subset_of_buses(cls, v, info):
-        buses_set = set(info.data.get("name", []))
-        extra = set(v) - buses_set
-        if extra:
-            raise ValueError(f"{info.field_name} contains unknown buses: {sorted(extra)}")
-        return v
+    @field_validator("static")
+    @classmethod
+    def _validate_static(cls, df: pd.DataFrame) -> pd.DataFrame:
+        spec = cls.TABLE_SPECS["static"]
+        if "bus" not in df.columns and df.index.name == "bus":
+            df = df.reset_index()
+        table = normalize_dataframe(ensure_dataframe(df, spec), spec, copy=True)
+        validate_unique_keys(table, ["bus"], spec.name)
+        return table.set_index("bus", drop=True)
 
-    @field_validator("generators_at_bus", "storage_at_bus", mode="after")
-    def _list_values(cls, v):
-        for bus_id, items in v.items():
-            if not isinstance(items, list):
-                raise TypeError(f"{bus_id} values must be lists.")
-        return v
+    @field_validator("attachments")
+    @classmethod
+    def _validate_attachments(cls, df: pd.DataFrame) -> pd.DataFrame:
+        spec = cls.TABLE_SPECS["attachments"]
+        table = normalize_dataframe(ensure_dataframe(df, spec), spec, copy=True)
+        validate_unique_keys(table, ["bus", "component", "unit", "role"], spec.name)
+        return table.reset_index(drop=True)
 
-    # ------------------------------------------------------------------
-    # Builders
-    # ------------------------------------------------------------------
+    @property
+    def name(self) -> List[BusId]:
+        if self.static.empty:
+            return []
+        return self.static.index.astype(str).tolist()
+
+    @property
+    def system(self) -> pd.Series:
+        if self.static.empty or "system" not in self.static.columns:
+            return pd.Series(dtype=object, name="system")
+        return self.static["system"]
+
+    @property
+    def region(self) -> pd.Series:
+        if self.static.empty or "region" not in self.static.columns:
+            return pd.Series(dtype=object, name="region")
+        return self.static["region"]
+
+    @property
+    def carrier(self) -> pd.Series:
+        if self.static.empty or "carrier" not in self.static.columns:
+            return pd.Series(dtype=object, name="carrier")
+        return self.static["carrier"]
+
+    def units(
+        self,
+        bus: str,
+        *,
+        component: Optional[str] = None,
+        role: Optional[str] = None,
+    ) -> pd.DataFrame:
+        """Return attachment rows for one bus, optionally filtered by component/role."""
+        if self.attachments.empty:
+            return pd.DataFrame(columns=["bus", "component", "unit", "role"])
+        out = self.attachments[self.attachments["bus"].astype(str) == str(bus)]
+        if component is not None:
+            out = out[out["component"].astype(str) == str(component)]
+        if role is not None:
+            out = out[out["role"].astype(str) == str(role)]
+        return out.reset_index(drop=True)
+
+    def buses_for_carrier(self, carrier: str) -> List[str]:
+        if self.static.empty or "carrier" not in self.static.columns:
+            return []
+        mask = self.static["carrier"].astype(str).str.lower() == str(carrier).strip().lower()
+        return self.static.index[mask].astype(str).tolist()
+
+    def carrier_of(self, bus: str) -> Optional[str]:
+        if self.static.empty or bus not in self.static.index:
+            return None
+        value = self.static.at[bus, "carrier"] if "carrier" in self.static.columns else None
+        if pd.isna(value):
+            return None
+        return str(value)
+
+    def series_dict(self, column: str) -> Dict[str, Any]:
+        if self.static.empty or column not in self.static.columns:
+            return {}
+        series = self.static[column].dropna()
+        return {str(idx): value for idx, value in series.items()}
+
+    def to_legacy_dicts(self) -> Dict[str, Dict[str, Any]]:
+        return {
+            "system": self.series_dict("system"),
+            "region": self.series_dict("region"),
+            "carrier": self.series_dict("carrier"),
+        }
+
     @classmethod
     def from_csv(
         cls,
         buses_csv_path: str,
         *,
-        generators_at_bus: Optional[Dict[BusId, List[Unit]]] = None,
-        storage_at_bus: Optional[Dict[BusId, List[Unit]]] = None,
+        generators_at_bus: Dict[BusId, List[str]] | None = None,
+        storage_at_bus: Dict[BusId, List[str]] | None = None,
         default_carrier: str = "electricity",
     ) -> "Bus":
-        """
-        Build a `Bus` object from a buses.csv template with columns:
-          - system, region, bus, carrier
-
-        Optional `generators_at_bus` and `storage_at_bus` mappings can be passed
-        to keep visibility of units per bus.
-        """
         df = pd.read_csv(buses_csv_path)
         required = {"bus", "carrier"}
         missing = required - set(df.columns)
         if missing:
             raise ValueError(f"{buses_csv_path} is missing required columns: {sorted(missing)}")
 
-        carrier_map: Dict[BusId, Carrier] = {}
-        system_map: Dict[BusId, str] = {}
-        region_map: Dict[BusId, str] = {}
+        static = df[["bus"]].copy()
+        static["system"] = df["system"] if "system" in df.columns else ""
+        static["region"] = df["region"] if "region" in df.columns else ""
+        static["carrier"] = df["carrier"].fillna(default_carrier)
 
-        for _, row in df.iterrows():
-            bus = str(row["bus"])
-            if not bus:
-                continue
-            carrier_val = str(row.get("carrier", default_carrier) or default_carrier)
-            system_val = row.get("system", None)
-            region_val = row.get("region", None)
-
-            # Keep first occurrence, but validate consistency if duplicates appear
-            if bus in carrier_map and carrier_map[bus] != carrier_val:
-                raise ValueError(f"Inconsistent carrier for bus '{bus}' in {buses_csv_path}")
-            carrier_map.setdefault(bus, carrier_val)
-
-            if system_val is not None:
-                system_val = str(system_val)
-                if bus in system_map and system_map[bus] != system_val:
-                    raise ValueError(f"Inconsistent system for bus '{bus}' in {buses_csv_path}")
-                system_map.setdefault(bus, system_val)
-
-            if region_val is not None:
-                region_val = str(region_val)
-                if bus in region_map and region_map[bus] != region_val:
-                    raise ValueError(f"Inconsistent region for bus '{bus}' in {buses_csv_path}")
-                region_map.setdefault(bus, region_val)
-
-        bus_names = sorted(carrier_map)
-
-        gen_map = generators_at_bus or {}
-        sto_map = storage_at_bus or {}
-
-        return cls(
-            name=bus_names,
-            system=system_map,
-            region=region_map,
-            carrier=carrier_map,
-            generators_at_bus=gen_map,
-            storage_at_bus=sto_map,
-        )
+        rows: list[dict[str, str]] = []
+        for bus, units in (generators_at_bus or {}).items():
+            rows.extend(
+                {"bus": str(bus), "component": "generator", "unit": str(unit), "role": "output"}
+                for unit in units
+            )
+        for bus, units in (storage_at_bus or {}).items():
+            rows.extend(
+                {"bus": str(bus), "component": "storage", "unit": str(unit), "role": "output"}
+                for unit in units
+            )
+        attachments = pd.DataFrame(rows, columns=["bus", "component", "unit", "role"])
+        return cls(static=static, attachments=attachments)

@@ -1,29 +1,43 @@
-| Attribute | Type | Unit | Description | Status |
-| --- | --- | --- | --- | --- |
-| `unit` | List[str] | n.a. | Name of the storage assets (hydro reservoirs, PHS, batteries, TES, H2 tanks, ...). | optional |
-| `system` | Dict[str, str] | n.a. | System/scenario tag (column 'system' in storage_units.csv), e.g. country code. | optional |
-| `region` | Dict[str, str] | n.a. | Region/zone for the storage asset (column 'region' in storage_units.csv). | optional |
-| `tech` | Dict[str, str] | n.a. | Storage technology label (e.g. 'HDAM', 'HPHS', 'BESS', 'TES', 'H2_tank'). | optional |
-| `carrier_in` | Dict[str, str] | n.a. | Input energy carrier (e.g. 'Electricity', 'Heat', 'H2'). | optional |
-| `carrier_out` | Dict[str, str] | n.a. | Output energy carrier (e.g. 'Electricity', 'Heat', 'H2'). | optional |
-| `bus_in` | Dict[str, str] | n.a. | Bus where storage charge is connected (e.g. 'SystemBus'). | optional |
-| `bus_out` | Dict[str, str] | n.a. | Bus where storage discharge is connected (e.g. 'SystemBus'). | optional |
-| `e_nom` | Dict[str, float] | MWh | Existing/committed energy capacity [MWh]. | optional |
-| `e_min` | Dict[str, float] | MWh | Minimum allowed energy level during operation[MWh]. | optional |
-| `e_nom_max` | Dict[str, float] | MWh | Maximum allowed energy capacity to be installed [MWh] (e.g. = e_nom for non-expandable hydro). | optional |
-| `p_charge_nom` | Dict[str, float] | MW | Maximum charging power [MW] into storage (physical limit). | optional |
-| `p_charge_nom_max` | Dict[str, float] | MW | Maximum charging capacity[MW] that can be installed. | optional |
-| `p_discharge_nom` | Dict[str, float] | MW | Maximum discharging power [MW] from storage (physical limit). | optional |
-| `p_discharge_nom_max` | Dict[str, float] | MW | Maximum discharging capacity [MW] that can be installed. | optional |
-| `duration_charge` | Dict[str, float] | hours | Charge duration [h]; combined with e_nom to derive p_charge_nom when templates use duration. | optional |
-| `duration_discharge` | Dict[str, float] | hours | Discharge duration [h]; combined with e_nom to derive p_discharge_nom when templates use duration. | optional |
-| `efficiency_charge` | Dict[str, float] | p.u. | Charging efficiency (fraction of input power stored). | optional |
-| `efficiency_discharge` | Dict[str, float] | p.u. | Discharging efficiency (fraction of stored energy delivered). | optional |
-| `standby_loss` | Dict[str, float] | p.u. | Fractional standing loss of stored energy per model period. | optional |
-| `capital_cost_energy` | Dict[str, float] | EUR/MWh | Investment cost per unit of energy capacity [€/MWh]. | optional |
-| `capital_cost_power_charge` | Dict[str, float] | EUR/MW | Investment cost per unit of charge power [€/MW]. | optional |
-| `capital_cost_power_discharge` | Dict[str, float] | EUR/MW | Investment cost per unit of discharge power [€/MW]. | optional |
-| `lifetime` | Dict[str, int] | years | Technical/economic lifetime of storage asset [years]. | optional |
-| `inflow` | Dict[Tuple[str, int, int], float] | MWh/period | Exogenous inflow to storage [MWh/period] by (unit, period, year), e.g. hydro inflows. | optional |
-| `spillage_cost` | Dict[str, float] | EUR/MWh | Penalty cost for spilling energy [€/MWh], if modelled. | optional |
-| `e_nom_inv_cost` | Dict[Tuple[str, int], float] | EUR/MWh | Specific investment cost for energy capacity [€/MWh] per (unit, year). | optional |
+| Table | Index | Column | Type | Unit | Status | Description |
+| --- | --- | --- | --- | --- | --- | --- |
+| `static` | unit | `unit` | string | n.a. | mandatory | Storage unit identifier. |
+| `static` | unit | `system` | string | n.a. | optional | System/scenario tag. |
+| `static` | unit | `region` | string | n.a. | optional | Region/zone identifier. |
+| `static` | unit | `tech` | string | n.a. | optional | Storage technology. |
+| `static` | unit | `carrier_in` | string | n.a. | optional | Input carrier. |
+| `static` | unit | `carrier_out` | string | n.a. | optional | Output carrier. |
+| `static` | unit | `bus_in` | string | n.a. | optional | Charging bus. |
+| `static` | unit | `bus_out` | string | n.a. | optional | Discharging bus. |
+| `static` | unit | `e_nom` | float | MWh | optional | Existing energy capacity. |
+| `static` | unit | `e_min` | float | MWh | optional | Minimum energy level. |
+| `static` | unit | `e_nom_max` | float | MWh | optional | Maximum energy capacity. |
+| `static` | unit | `p_charge_nom` | float | MW | optional | Charge power limit. |
+| `static` | unit | `p_charge_nom_max` | float | MW | optional | Maximum charge power. |
+| `static` | unit | `p_discharge_nom` | float | MW | optional | Discharge power limit. |
+| `static` | unit | `p_discharge_nom_max` | float | MW | optional | Maximum discharge power. |
+| `static` | unit | `duration_charge` | float | hours | optional | Charge duration. |
+| `static` | unit | `duration_discharge` | float | hours | optional | Discharge duration. |
+| `static` | unit | `efficiency_charge` | float | p.u. | optional | Charge efficiency. |
+| `static` | unit | `efficiency_discharge` | float | p.u. | optional | Discharge efficiency. |
+| `static` | unit | `standby_loss` | float | p.u. | optional | Standing loss. |
+| `static` | unit | `capital_cost_energy` | float | EUR/MWh | optional | Energy capacity capex. |
+| `static` | unit | `capital_cost_power_charge` | float | EUR/MW | optional | Charge power capex. |
+| `static` | unit | `capital_cost_power_discharge` | float | EUR/MW | optional | Discharge power capex. |
+| `static` | unit | `lifetime` | int | years | optional | Technical/economic lifetime. |
+| `static` | unit | `spillage_cost` | float | EUR/MWh | optional | Spillage cost. |
+| `inflow` | - | `unit` | string | n.a. | mandatory | Storage unit identifier. |
+| `inflow` | - | `period` | int | index | mandatory | Time period index. |
+| `inflow` | - | `year` | int | year | mandatory | Model year. |
+| `inflow` | - | `inflow` | float | MWh/period | mandatory | Exogenous inflow. |
+| `availability` | - | `unit` | string | n.a. | mandatory | Storage unit identifier. |
+| `availability` | - | `period` | int | index | mandatory | Time period index. |
+| `availability` | - | `year` | int | year | mandatory | Model year. |
+| `availability` | - | `availability` | float | p.u. | mandatory | Availability factor. |
+| `e_nom_ts` | - | `unit` | string | n.a. | mandatory | Storage unit identifier. |
+| `e_nom_ts` | - | `period` | int | index | mandatory | Time period index. |
+| `e_nom_ts` | - | `year` | int | year | mandatory | Model year. |
+| `e_nom_ts` | - | `e_nom_ts` | float | MWh | mandatory | Time-varying effective energy capacity. |
+| `investment_costs` | - | `unit` | string | n.a. | mandatory | Storage unit identifier. |
+| `investment_costs` | - | `year` | int | year | mandatory | Model year. |
+| `investment_costs` | - | `e_nom_inv_cost` | float | EUR/MWh | mandatory | Specific energy investment cost. |
+| `field` | - | `dynamic` | Dict[str, DataFrame] | table-map | optional | Separate time-varying storage tables keyed by attribute name. |

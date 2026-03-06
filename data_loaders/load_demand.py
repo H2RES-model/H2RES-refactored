@@ -1,17 +1,18 @@
-"""Demand loader for electricity, heating, and cooling time series."""
+"""Demand loader for generic carrier demand time series."""
 
 from __future__ import annotations
 
 from typing import Dict, Optional, Tuple
-from collections import defaultdict
-import os
 import pandas as pd
 
 from data_models.SystemSets import SystemSets
 from data_models.Demand import Demand
 from data_models.Bus import Bus
+from data_models.Transport import Transport
 from data_loaders.helpers.io import TableCache, read_table
+from data_loaders.helpers.model_factory import build_model
 from data_loaders.helpers.transport_utils import load_ev_inputs, _is_electric_transport_tech
+from data_loaders.helpers.transport_integration import transport_to_system_demand
 
 Key = Tuple[str, str, str, str, int, int]  # (system, region, bus, carrier, period, year)
 
@@ -19,10 +20,8 @@ Key = Tuple[str, str, str, str, int, int]  # (system, region, bus, carrier, peri
 def load_demand(
     *,
     sets: SystemSets,
-    electricity_path: Optional[str] = None,
-    heating_path: Optional[str] = None,
-    cooling_path: Optional[str] = None,
-    industry_path: Optional[str] = None,
+    carrier_paths: Optional[Dict[str, str]] = None,
+    transport: Optional[Transport] = None,
     transport_demand_path: Optional[str] = None,
     transport_general_params_path: Optional[str] = None,
     transport_zones_path: Optional[str] = None,
@@ -37,9 +36,8 @@ def load_demand(
 
     Args:
         sets: SystemSets containing modeled years and periods.
-        electricity_path: Path to electricity demand file.
-        heating_path: Optional path to heating demand file.
-        cooling_path: Optional path to cooling demand file.
+        carrier_paths: Optional mapping of carrier -> demand file.
+        transport: Optional canonical transport component.
         transport_demand_path: Optional path to transport demand time series.
         transport_general_params_path: Path to general transport parameters.
         transport_zones_path: Path to transport zones modeling input.
@@ -65,13 +63,16 @@ def load_demand(
     bus_lookup: Dict[str, Tuple[str, str, str, str]] = {}  # lower_bus -> (system, region, bus_id, carrier)
 
     if buses is not None:
-        for bus_id in buses.name:
-            b_lower = str(bus_id).lower()
-            bus_lookup[b_lower] = (
-                str(buses.system.get(bus_id, "")),
-                str(buses.region.get(bus_id, "")),
-                str(bus_id),
-                str(buses.carrier.get(bus_id, default_carrier)),
+        bus_static = buses.static.reset_index()
+        for _, row in bus_static.iterrows():
+            bus_id = str(row["bus"]).strip()
+            if not bus_id:
+                continue
+            bus_lookup[bus_id.lower()] = (
+                str(row.get("system", "")).strip(),
+                str(row.get("region", "")).strip(),
+                bus_id,
+                str(row.get("carrier", default_carrier)).strip() or default_carrier,
             )
 
     if buses_path:
@@ -120,9 +121,9 @@ def load_demand(
     # --------------------------------------------------------------
     # 2. Helper to read one CSV for one carrier
     # --------------------------------------------------------------
-    def _read_single(path: Optional[str], carrier: str) -> Dict[Key, float]:
+    def _read_single(path: Optional[str], carrier: str) -> pd.DataFrame:
         if path is None:
-            return {}
+            return pd.DataFrame(columns=["system", "region", "bus", "carrier", "period", "year", "p_t"])
 
         df = read_table(path, cache=table_cache)
 
@@ -143,61 +144,69 @@ def load_demand(
         # horizon filter
         df = df[df["year"].isin(sets.years) & df["period"].isin(sets.periods)]
         if df.empty:
-            return {}
+            return pd.DataFrame(columns=["system", "region", "bus", "carrier", "period", "year", "p_t"])
 
         # collect demand columns
         id_vars = ["year", "period"]
         value_cols = [c for c in df.columns if c not in id_vars]
         if not value_cols:
-            return {}
+            return pd.DataFrame(columns=["system", "region", "bus", "carrier", "period", "year", "p_t"])
 
         # numeric conversion
         for col in value_cols:
             df[col] = pd.to_numeric(df[col], errors="raise")
 
-        out: Dict[Key, float] = {}
+        long_df = df.melt(id_vars=id_vars, value_vars=value_cols, var_name="bus_column", value_name="p_t")
+        long_df = long_df.dropna(subset=["p_t"])
+        if long_df.empty:
+            return pd.DataFrame(columns=["system", "region", "bus", "carrier", "period", "year", "p_t"])
+        if (long_df["p_t"] < 0).any():
+            raise ValueError(f"Negative demand in {path} for {carrier}")
 
-        # Assign each demand column to its own bus (lookup from buses.csv)
+        meta_rows = []
         for col in value_cols:
-            series = df[["year", "period", col]].dropna(subset=[col])
-            if series.empty:
-                continue
-            if (series[col] < 0).any():
-                raise ValueError(f"Negative demand in {path} for {carrier}")
             sys, reg, bus_id, carrier_val = bus_info(col, carrier)
-            years = series["year"].astype(int).to_numpy()
-            periods = series["period"].astype(int).to_numpy()
-            values = series[col].astype(float).to_numpy()
+            meta_rows.append(
+                {
+                    "bus_column": col,
+                    "system": sys,
+                    "region": reg,
+                    "bus": bus_id,
+                    "carrier": carrier_val,
+                }
+            )
+        meta_df = pd.DataFrame(meta_rows)
+        merged = long_df.merge(meta_df, on="bus_column", how="left", validate="many_to_one")
+        return merged[["system", "region", "bus", "carrier", "period", "year", "p_t"]]
 
-            for y, p, val in zip(years, periods, values):
-                out[(sys, reg, bus_id, carrier_val, p, y)] = val
-
-        return out
+    carrier_paths = dict(carrier_paths or {})
 
     # --------------------------------------------------------------
     # 3. Build final merged dictionary
     # --------------------------------------------------------------
-    p_t: Dict[Key, float] = dict(existing_demand.p_t) if existing_demand else {}
+    demand_frames: list[pd.DataFrame] = []
+    if existing_demand is not None and not existing_demand.p_t.empty:
+        demand_frames.append(existing_demand.p_t.copy())
 
-    for carrier, path in (
-        ("electricity", electricity_path),
-        ("heat", heating_path),
-        ("cooling", cooling_path),
-        ("industry_heat", industry_path),
-    ):
+    for carrier, path in carrier_paths.items():
         part = _read_single(path, carrier)
-        for key, val in part.items():
-            p_t[key] = p_t.get(key, 0.0) + val  # summation logic retained
+        if not part.empty:
+            demand_frames.append(part)
 
-    # Transport demand: add EV transport load to electricity demand at bus_in
-    if transport_demand_path:
-        if transport_general_params_path is None:
-            transport_general_params_path = os.path.join(
-                "data", "transport", "transport_general_parameters.xlsx"
-            )
-        if transport_zones_path is None:
+    # Transport demand from canonical transport component.
+    if transport is not None:
+        if buses is None:
+            raise ValueError("Bus model is required when transport demand is provided.")
+        transport_df = transport_to_system_demand(transport, buses)
+        if not transport_df.empty:
+            if (transport_df["p_t"] < 0).any():
+                raise ValueError("Negative transport demand values found.")
+            demand_frames.append(transport_df)
+    # Backward-compatible raw transport path fallback.
+    elif transport_demand_path:
+        if transport_general_params_path is None or transport_zones_path is None:
             raise ValueError(
-                "transport_zones_path is required when transport_demand_path is provided."
+                "transport_general_params_path and transport_zones_path are required when transport_demand_path is provided."
             )
 
         params_df, _ev_availability, ev_demand_profile = load_ev_inputs(
@@ -206,41 +215,68 @@ def load_demand(
             ev_demand_path=transport_demand_path,
         )
 
-        # Group TS once per unit for fast lookup inside the per-unit loop.
-        profile_by_unit: Dict[str, Dict[Tuple[int, int], float]] = defaultdict(dict)
-        for (u, p, y), v in ev_demand_profile.items():
-            if int(y) in sets.years and int(p) in sets.periods:
-                profile_by_unit[str(u)][(int(p), int(y))] = float(v)
-
-        # Only electric transport techs contribute to electricity demand.
+        profiles_df = ev_demand_profile[
+            ev_demand_profile["year"].astype(int).isin(sets.years)
+            & ev_demand_profile["period"].astype(int).isin(sets.periods)
+        ].copy()
+        profiles_df = profiles_df.rename(columns={"ev_demand": "profile"})
         params_electric = params_df[params_df["tech"].map(_is_electric_transport_tech)].copy()
-        for _, row in params_electric.iterrows():
-            unit = str(row["name"])
-            if "ev_demand_unit" not in row:
+        if not params_electric.empty:
+            if "ev_demand_unit" not in params_electric.columns:
                 raise ValueError(
                     "Transport params are missing 'ev_demand_unit'. "
                     "Check that transport_demand_path is provided and matches transport sectors."
                 )
-            unit_ev_demand = float(row["ev_demand_unit"])
-            bus_in = str(row.get("bus_in"))
-
-            if bus_lookup and str(bus_in).strip().lower() not in bus_lookup:
-                excel_row = int(row.name) + 2 if isinstance(row.name, (int, float)) else None
-                line_txt = f", row {excel_row}" if excel_row is not None else ""
-                raise ValueError(
-                    f"{transport_zones_path}{line_txt}: bus_in '{bus_in}' not found in data/buses.csv"
-                )
-
-            # Use the carrier declared at the bus to avoid forcing electricity
-            # on non-electric transport buses.
-            sys, reg, bus_id, carrier_val = bus_info(bus_in, None)
-            for (p, y), profile in profile_by_unit.get(unit, {}).items():
-                demand_val = float(profile) * unit_ev_demand
-                if demand_val < 0:
+            params_electric["bus_in"] = params_electric["bus_in"].astype(str)
+            if bus_lookup:
+                bad_bus = ~params_electric["bus_in"].str.strip().str.lower().isin(bus_lookup.keys())
+                if bad_bus.any():
+                    bad_row = params_electric.loc[bad_bus].iloc[0]
+                    excel_row = int(bad_row.name) + 2 if isinstance(bad_row.name, (int, float)) else None
+                    line_txt = f", row {excel_row}" if excel_row is not None else ""
                     raise ValueError(
-                        f"Negative transport demand for '{unit}' at ({p},{y}): {demand_val}"
+                        f"{transport_zones_path}{line_txt}: bus_in '{bad_row['bus_in']}' not found in data/buses.csv"
                     )
-                key = (sys, reg, bus_id, carrier_val, int(p), int(y))
-                p_t[key] = p_t.get(key, 0.0) + demand_val
+            params_electric["bus_lookup"] = params_electric["bus_in"].str.lower().str.strip()
+            meta_rows = []
+            for bus_in in params_electric["bus_in"].dropna().astype(str).unique().tolist():
+                sys, reg, bus_id, carrier_val = bus_info(bus_in, None)
+                meta_rows.append(
+                    {
+                        "bus_lookup": bus_in.lower().strip(),
+                        "system": sys,
+                        "region": reg,
+                        "bus": bus_id,
+                        "carrier": carrier_val,
+                    }
+                )
+            meta_df = pd.DataFrame(meta_rows)
+            params_electric = (
+                params_electric.drop(columns=["system", "region"], errors="ignore")
+                .merge(meta_df, on="bus_lookup", how="left", validate="many_to_one")
+            )
+            if not profiles_df.empty:
+                transport_df = params_electric[["name", "system", "region", "bus", "carrier", "ev_demand_unit"]].merge(
+                    profiles_df,
+                    left_on="name",
+                    right_on="unit",
+                    how="inner",
+                    validate="one_to_many",
+                )
+                transport_df["p_t"] = transport_df["ev_demand_unit"].astype(float) * transport_df["profile"].astype(float)
+                if (transport_df["p_t"] < 0).any():
+                    raise ValueError("Negative transport demand values found.")
+                demand_frames.append(transport_df[["system", "region", "bus", "carrier", "period", "year", "p_t"]])
 
-    return Demand(p_t=p_t)
+    if demand_frames:
+        out_df = pd.concat(demand_frames, ignore_index=True)
+        out_df = (
+            out_df.groupby(["system", "region", "bus", "carrier", "period", "year"], as_index=False)["p_t"]
+            .sum()
+            .sort_values(["system", "region", "bus", "carrier", "year", "period"], kind="stable")
+            .reset_index(drop=True)
+        )
+    else:
+        out_df = pd.DataFrame(columns=["system", "region", "bus", "carrier", "period", "year", "p_t"])
+
+    return build_model(Demand, p_t=out_df)

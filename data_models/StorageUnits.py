@@ -1,295 +1,325 @@
 from __future__ import annotations
-from typing import Dict, List, Tuple
-from pydantic import BaseModel, Field, field_validator, ConfigDict
+
+from typing import Any, ClassVar, Dict, List, Tuple
+
+import pandas as pd
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+from data_models.table_schema import (
+    ColumnSpec,
+    TableSpec,
+    dataframe_to_multiindex_dict,
+    empty_table,
+    ensure_dataframe,
+    normalize_dataframe,
+    validate_non_negative,
+    validate_unique_keys,
+)
 
 U = str
 P = int
 Y = int
 UPY = Tuple[U, P, Y]
 
-BusId = str
-Carrier = str
-
-# ===============================================================
-# 2. StorageUnits  (energy buffers only, no direct dispatch)
-# ===============================================================
 
 class StorageUnits(BaseModel):
-    """
-    Energy storage assets only (reservoirs, batteries, TES, H2 tanks).
+    """Storage inputs with explicit pandas fields."""
 
-    Examples:
-      - Hydro reservoirs (HDAM, PHS)
-      - Battery storage systems
-      - Thermal energy storage tanks
-      - Hydrogen tanks
+    TABLE_SPECS: ClassVar[Dict[str, TableSpec]] = {
+        "static": TableSpec(
+            name="storage.static",
+            description="Static storage unit attributes indexed by unit.",
+            index=("unit",),
+            columns=(
+                ColumnSpec("unit", "string", "Storage unit identifier.", status="mandatory"),
+                ColumnSpec("system", "string", "System/scenario tag."),
+                ColumnSpec("region", "string", "Region/zone identifier."),
+                ColumnSpec("tech", "string", "Storage technology."),
+                ColumnSpec("carrier_in", "string", "Input carrier."),
+                ColumnSpec("carrier_out", "string", "Output carrier."),
+                ColumnSpec("bus_in", "string", "Charging bus."),
+                ColumnSpec("bus_out", "string", "Discharging bus."),
+                ColumnSpec("e_nom", "float", "Existing energy capacity.", unit="MWh"),
+                ColumnSpec("e_min", "float", "Minimum energy level.", unit="MWh"),
+                ColumnSpec("e_nom_max", "float", "Maximum energy capacity.", unit="MWh"),
+                ColumnSpec("p_charge_nom", "float", "Charge power limit.", unit="MW"),
+                ColumnSpec("p_charge_nom_max", "float", "Maximum charge power.", unit="MW"),
+                ColumnSpec("p_discharge_nom", "float", "Discharge power limit.", unit="MW"),
+                ColumnSpec("p_discharge_nom_max", "float", "Maximum discharge power.", unit="MW"),
+                ColumnSpec("duration_charge", "float", "Charge duration.", unit="hours"),
+                ColumnSpec("duration_discharge", "float", "Discharge duration.", unit="hours"),
+                ColumnSpec("efficiency_charge", "float", "Charge efficiency.", unit="p.u."),
+                ColumnSpec("efficiency_discharge", "float", "Discharge efficiency.", unit="p.u."),
+                ColumnSpec("standby_loss", "float", "Standing loss.", unit="p.u."),
+                ColumnSpec("capital_cost_energy", "float", "Energy capacity capex.", unit="EUR/MWh"),
+                ColumnSpec("capital_cost_power_charge", "float", "Charge power capex.", unit="EUR/MW"),
+                ColumnSpec("capital_cost_power_discharge", "float", "Discharge power capex.", unit="EUR/MW"),
+                ColumnSpec("lifetime", "int", "Technical/economic lifetime.", unit="years"),
+                ColumnSpec("spillage_cost", "float", "Spillage cost.", unit="EUR/MWh"),
+            ),
+        ),
+        "inflow": TableSpec(
+            name="storage.inflow",
+            description="Storage inflow time series.",
+            columns=(
+                ColumnSpec("unit", "string", "Storage unit identifier.", status="mandatory"),
+                ColumnSpec("period", "int", "Time period index.", unit="index", status="mandatory"),
+                ColumnSpec("year", "int", "Model year.", unit="year", status="mandatory"),
+                ColumnSpec("inflow", "float", "Exogenous inflow.", unit="MWh/period", status="mandatory"),
+            ),
+        ),
+        "availability": TableSpec(
+            name="storage.availability",
+            description="Storage availability factor time series.",
+            columns=(
+                ColumnSpec("unit", "string", "Storage unit identifier.", status="mandatory"),
+                ColumnSpec("period", "int", "Time period index.", unit="index", status="mandatory"),
+                ColumnSpec("year", "int", "Model year.", unit="year", status="mandatory"),
+                ColumnSpec("availability", "float", "Availability factor.", unit="p.u.", status="mandatory"),
+            ),
+        ),
+        "e_nom_ts": TableSpec(
+            name="storage.e_nom_ts",
+            description="Time-varying effective energy capacity.",
+            columns=(
+                ColumnSpec("unit", "string", "Storage unit identifier.", status="mandatory"),
+                ColumnSpec("period", "int", "Time period index.", unit="index", status="mandatory"),
+                ColumnSpec("year", "int", "Model year.", unit="year", status="mandatory"),
+                ColumnSpec("e_nom_ts", "float", "Time-varying effective energy capacity.", unit="MWh", status="mandatory"),
+            ),
+        ),
+        "investment_costs": TableSpec(
+            name="storage.investment_costs",
+            description="Optional storage energy-capex overrides by unit and year.",
+            columns=(
+                ColumnSpec("unit", "string", "Storage unit identifier.", status="mandatory"),
+                ColumnSpec("year", "int", "Model year.", unit="year", status="mandatory"),
+                ColumnSpec("e_nom_inv_cost", "float", "Specific energy investment cost.", unit="EUR/MWh", status="mandatory"),
+            ),
+        ),
+    }
 
-    Design:
-      - Holds energy capacity, SOC, inflows, and energy-side losses.
-      - No direct generator dispatch, ramping, or fuel costs here.
-      - Power-side economics typically live in Generators (turbines, converters).
-    """
+    static: pd.DataFrame = Field(default_factory=lambda: empty_table(StorageUnits.TABLE_SPECS["static"]))
+    inflow: pd.DataFrame = Field(default_factory=lambda: empty_table(StorageUnits.TABLE_SPECS["inflow"]))
+    availability: pd.DataFrame = Field(default_factory=lambda: empty_table(StorageUnits.TABLE_SPECS["availability"]))
+    e_nom_ts: pd.DataFrame = Field(default_factory=lambda: empty_table(StorageUnits.TABLE_SPECS["e_nom_ts"]))
+    investment_costs: pd.DataFrame = Field(default_factory=lambda: empty_table(StorageUnits.TABLE_SPECS["investment_costs"]))
 
-    # -----------------------------------------------------------
-    # Index & classification
-    # -----------------------------------------------------------
-    unit: List[U] = Field(
-        json_schema_extra={"unit": "n.a.", "status": "optional"},
-        default_factory=list,
-        description="Name of the storage assets (hydro reservoirs, PHS, batteries, TES, H2 tanks, ...).",
-    )
+    model_config = ConfigDict(frozen=True, extra="forbid", arbitrary_types_allowed=True)
 
-    system: Dict[U, str] = Field(
-        json_schema_extra={"unit": "n.a.", "status": "optional"},
-        default_factory=dict,
-        description="System/scenario tag (column 'system' in storage_units.csv), e.g. country code.",
-    )
+    @field_validator("static")
+    @classmethod
+    def _validate_static(cls, df: pd.DataFrame) -> pd.DataFrame:
+        spec = cls.TABLE_SPECS["static"]
+        if "unit" not in df.columns and df.index.name == "unit":
+            df = df.reset_index()
+        table = normalize_dataframe(ensure_dataframe(df, spec), spec, copy=True)
+        validate_unique_keys(table, ["unit"], spec.name)
+        validate_non_negative(
+            table,
+            [
+                "e_nom",
+                "e_min",
+                "e_nom_max",
+                "p_charge_nom",
+                "p_charge_nom_max",
+                "p_discharge_nom",
+                "p_discharge_nom_max",
+                "duration_charge",
+                "duration_discharge",
+                "capital_cost_energy",
+                "capital_cost_power_charge",
+                "capital_cost_power_discharge",
+                "lifetime",
+            ],
+            spec.name,
+        )
+        return table.set_index("unit", drop=True)
 
-    region: Dict[U, str] = Field(
-        json_schema_extra={"unit": "n.a.", "status": "optional"},
-        default_factory=dict,
-        description="Region/zone for the storage asset (column 'region' in storage_units.csv).",
-    )
+    @classmethod
+    def _validate_timeseries(cls, df: pd.DataFrame, name: str) -> pd.DataFrame:
+        spec = cls.TABLE_SPECS[name]
+        table = normalize_dataframe(ensure_dataframe(df, spec), spec, copy=True)
+        validate_unique_keys(table, ["unit", "period", "year"], spec.name)
+        validate_non_negative(table, [name], spec.name)
+        return table.reset_index(drop=True)
 
-    tech: Dict[U, str] = Field(
-        json_schema_extra={"unit": "n.a.", "status": "optional"},
-        default_factory=dict,
-        description="Storage technology label (e.g. 'HDAM', 'HPHS', 'BESS', 'TES', 'H2_tank').",
-    )
+    @field_validator("inflow")
+    @classmethod
+    def _validate_inflow(cls, df: pd.DataFrame) -> pd.DataFrame:
+        return cls._validate_timeseries(df, "inflow")
 
-    carrier_in: Dict[U, Carrier] = Field(
-        json_schema_extra={"unit": "n.a.", "status": "optional"},
-        default_factory=dict,
-        description="Input energy carrier (e.g. 'Electricity', 'Heat', 'H2').",
-    )
+    @field_validator("availability")
+    @classmethod
+    def _validate_availability(cls, df: pd.DataFrame) -> pd.DataFrame:
+        return cls._validate_timeseries(df, "availability")
 
-    carrier_out: Dict[U, Carrier] = Field(
-        json_schema_extra={"unit": "n.a.", "status": "optional"},
-        default_factory=dict,
-        description="Output energy carrier (e.g. 'Electricity', 'Heat', 'H2').",
-    )
+    @field_validator("e_nom_ts")
+    @classmethod
+    def _validate_e_nom_ts(cls, df: pd.DataFrame) -> pd.DataFrame:
+        return cls._validate_timeseries(df, "e_nom_ts")
 
-    bus_in: Dict[U, BusId] = Field(
-        json_schema_extra={"unit": "n.a.", "status": "optional"},
-        default_factory=dict,
-        description="Bus where storage charge is connected (e.g. 'SystemBus').",
-    )
-    
-    bus_out: Dict[U, BusId] = Field(
-        json_schema_extra={"unit": "n.a.", "status": "optional"},
-        default_factory=dict,
-        description="Bus where storage discharge is connected (e.g. 'SystemBus').",
-    )
+    @field_validator("investment_costs")
+    @classmethod
+    def _validate_investment_costs(cls, df: pd.DataFrame) -> pd.DataFrame:
+        spec = cls.TABLE_SPECS["investment_costs"]
+        table = normalize_dataframe(ensure_dataframe(df, spec), spec, copy=True)
+        validate_unique_keys(table, ["unit", "year"], spec.name)
+        validate_non_negative(table, ["e_nom_inv_cost"], spec.name)
+        return table.reset_index(drop=True)
 
-    # -----------------------------------------------------------
-    # Energy & power capacities
-    # -----------------------------------------------------------
-    e_nom: Dict[U, float] = Field(
-        json_schema_extra={"unit": "MWh", "status": "optional"},
-        default_factory=dict,
-        description="Existing/committed energy capacity [MWh].",
-    )
+    @property
+    def unit(self) -> List[U]:
+        if self.static.empty:
+            return []
+        return self.static.index.astype(str).tolist()
 
-    e_min: Dict[U, float] = Field(
-        json_schema_extra={"unit": "MWh", "status": "optional"},
-        default_factory=dict,
-        description="Minimum allowed energy level during operation[MWh].",
-    )
+    def _static_series(self, column: str) -> pd.Series:
+        if self.static.empty or column not in self.static.columns:
+            return pd.Series(dtype=object, name=column)
+        return self.static[column]
 
-    e_nom_max: Dict[U, float] = Field(
-        json_schema_extra={"unit": "MWh", "status": "optional"},
-        default_factory=dict,
-        description="Maximum allowed energy capacity to be installed [MWh] (e.g. = e_nom for non-expandable hydro).",
-    )
+    @property
+    def system(self) -> pd.Series:
+        return self._static_series("system")
 
-    p_charge_nom: Dict[U, float] = Field(
-        json_schema_extra={"unit": "MW", "status": "optional"},
-        default_factory=dict,
-        description="Maximum charging power [MW] into storage (physical limit).",
-    )
+    @property
+    def region(self) -> pd.Series:
+        return self._static_series("region")
 
-    p_charge_nom_max: Dict[U, float] = Field(
-        json_schema_extra={"unit": "MW", "status": "optional"},
-        default_factory=dict,
-        description="Maximum charging capacity[MW] that can be installed.",
-    )
+    @property
+    def tech(self) -> pd.Series:
+        return self._static_series("tech")
 
-    p_discharge_nom: Dict[U, float] = Field(
-        json_schema_extra={"unit": "MW", "status": "optional"},
-        default_factory=dict,
-        description="Maximum discharging power [MW] from storage (physical limit).",
-    )
+    @property
+    def carrier_in(self) -> pd.Series:
+        return self._static_series("carrier_in")
 
-    p_discharge_nom_max: Dict[U, float] = Field(
-        json_schema_extra={"unit": "MW", "status": "optional"},
-        default_factory=dict,
-        description="Maximum discharging capacity [MW] that can be installed.",
-    )
+    @property
+    def carrier_out(self) -> pd.Series:
+        return self._static_series("carrier_out")
 
-    # Duration-based sizing (aligned with storage_units.csv template)
-    duration_charge: Dict[U, float] = Field(
-        json_schema_extra={"unit": "hours", "status": "optional"},
-        default_factory=dict,
-        description="Charge duration [h]; combined with e_nom to derive p_charge_nom when templates use duration.",
-    )
+    @property
+    def bus_in(self) -> pd.Series:
+        return self._static_series("bus_in")
 
-    duration_discharge: Dict[U, float] = Field(
-        json_schema_extra={"unit": "hours", "status": "optional"},
-        default_factory=dict,
-        description="Discharge duration [h]; combined with e_nom to derive p_discharge_nom when templates use duration.",
-    )
+    @property
+    def bus_out(self) -> pd.Series:
+        return self._static_series("bus_out")
 
-    # -----------------------------------------------------------
-    # Efficiencies & losses (energy side)
-    # -----------------------------------------------------------
-    efficiency_charge: Dict[U, float] = Field(
-        json_schema_extra={"unit": "p.u.", "status": "optional"},
-        default_factory=dict,
-        description="Charging efficiency (fraction of input power stored).",
-    )
+    @property
+    def e_nom(self) -> pd.Series:
+        return self._static_series("e_nom")
 
-    efficiency_discharge: Dict[U, float] = Field(
-        json_schema_extra={"unit": "p.u.", "status": "optional"},
-        default_factory=dict,
-        description="Discharging efficiency (fraction of stored energy delivered).",
-    )
+    @property
+    def e_min(self) -> pd.Series:
+        return self._static_series("e_min")
 
-    standby_loss: Dict[U, float] = Field(
-        json_schema_extra={"unit": "p.u.", "status": "optional"},
-        default_factory=dict,
-        description="Fractional standing loss of stored energy per model period.",
-    )
+    @property
+    def e_nom_max(self) -> pd.Series:
+        return self._static_series("e_nom_max")
 
-    # -----------------------------------------------------------
-    # Economics & lifetime (energy side)
-    # -----------------------------------------------------------
-    capital_cost_energy: Dict[U, float] = Field(
-        json_schema_extra={"unit": "EUR/MWh", "status": "optional"},
-        default_factory=dict,
-        description="Investment cost per unit of energy capacity [€/MWh].",
-    )
+    @property
+    def p_charge_nom(self) -> pd.Series:
+        return self._static_series("p_charge_nom")
 
-    capital_cost_power_charge: Dict[U, float] = Field(
-        json_schema_extra={"unit": "EUR/MW", "status": "optional"},
-        default_factory=dict,
-        description="Investment cost per unit of charge power [€/MW].",
-    )
+    @property
+    def p_charge_nom_max(self) -> pd.Series:
+        return self._static_series("p_charge_nom_max")
 
-    capital_cost_power_discharge: Dict[U, float] = Field(
-        json_schema_extra={"unit": "EUR/MW", "status": "optional"},
-        default_factory=dict,
-        description="Investment cost per unit of discharge power [€/MW].",
-    )
+    @property
+    def p_discharge_nom(self) -> pd.Series:
+        return self._static_series("p_discharge_nom")
 
-    lifetime: Dict[U, int] = Field(
-        json_schema_extra={"unit": "years", "status": "optional"},
-        default_factory=dict,
-        description="Technical/economic lifetime of storage asset [years].",
-    )
+    @property
+    def p_discharge_nom_max(self) -> pd.Series:
+        return self._static_series("p_discharge_nom_max")
 
-    # -----------------------------------------------------------
-    # Time series / inflows
-    # -----------------------------------------------------------
-    inflow: Dict[UPY, float] = Field(
-        json_schema_extra={"unit": "MWh/period", "status": "optional"},
-        default_factory=dict,
-        description="Exogenous inflow to storage [MWh/period] by (unit, period, year), e.g. hydro inflows.",
-    )
+    @property
+    def duration_charge(self) -> pd.Series:
+        return self._static_series("duration_charge")
 
-    availability: Dict[UPY, float] = Field(
-        json_schema_extra={"unit": "p.u.", "status": "optional"},
-        default_factory=dict,
-        description="Optional storage availability factor [0-1] by (unit, period, year).",
-    )
+    @property
+    def duration_discharge(self) -> pd.Series:
+        return self._static_series("duration_discharge")
 
-    e_nom_ts: Dict[UPY, float] = Field(
-        json_schema_extra={"unit": "MWh", "status": "optional"},
-        default_factory=dict,
-        description="Optional time-varying effective energy capacity [MWh] by (unit, period, year).",
-    )
+    @property
+    def efficiency_charge(self) -> pd.Series:
+        return self._static_series("efficiency_charge")
 
-    spillage_cost: Dict[U, float] = Field(
-        json_schema_extra={"unit": "EUR/MWh", "status": "optional"},
-        default_factory=dict,
-        description="Penalty cost for spilling energy [€/MWh], if modelled.",
-    )
+    @property
+    def efficiency_discharge(self) -> pd.Series:
+        return self._static_series("efficiency_discharge")
 
-    # -----------------------------------------------------------
-    # Optional energy-capacity capex by (unit, year)
-    # -----------------------------------------------------------
-    e_nom_inv_cost: Dict[Tuple[U, Y], float] = Field(
-        json_schema_extra={"unit": "EUR/MWh", "status": "optional"},
-        default_factory=dict,
-        description="Specific investment cost for energy capacity [€/MWh] per (unit, year).",
-    )
+    @property
+    def standby_loss(self) -> pd.Series:
+        return self._static_series("standby_loss")
 
-    model_config = ConfigDict(frozen=True, extra="forbid")
+    @property
+    def capital_cost_energy(self) -> pd.Series:
+        return self._static_series("capital_cost_energy")
 
-    # -----------------------------------------------------------
-    # Validators
-    # -----------------------------------------------------------
+    @property
+    def capital_cost_power_charge(self) -> pd.Series:
+        return self._static_series("capital_cost_power_charge")
 
-    @field_validator(
-        "system", "region",
-        "tech", "carrier_in", "carrier_out", "bus_in", "bus_out",
-        "e_nom", "e_nom_max", "e_min",
-        "p_charge_nom", "p_charge_nom_max",
-        "p_discharge_nom", "p_discharge_nom_max",
-        "duration_charge", "duration_discharge",
-        "efficiency_charge", "efficiency_discharge", "standby_loss",
-        "capital_cost_energy",
-        "capital_cost_power_charge",
-        "capital_cost_power_discharge",
-        "lifetime", "spillage_cost",
-        mode="after",
-    )
-    def _keys_subset_of_units(cls, v, info):
-        """
-        Ensure all per-unit storage dicts only reference known units.
-        Dicts may be sparse (keys ⊆ units).
-        """
-        units = set(info.data.get("unit", []))
-        extra = set(v) - units
-        if extra:
-            raise ValueError(f"{info.field_name} contains unknown units: {sorted(extra)}")
-        return v
+    @property
+    def capital_cost_power_discharge(self) -> pd.Series:
+        return self._static_series("capital_cost_power_discharge")
 
-    @field_validator("e_nom_inv_cost", mode="after")
-    def _energy_capex_keys_subset_of_units(cls, v, info):
-        units = set(info.data.get("unit", []))
-        extra_units = {u for (u, y) in v if u not in units}
-        if extra_units:
-            raise ValueError(
-                f"e_nom_inv_cost contains unknown units: {sorted(extra_units)}"
-            )
-        for (u, y) in v:
-            if not isinstance(u, str):
-                raise TypeError(f"e_nom_inv_cost key has non-str unit: {u!r}")
-        return v
+    @property
+    def lifetime(self) -> pd.Series:
+        return self._static_series("lifetime")
 
-    @field_validator("inflow", "availability", "e_nom_ts", mode="after")
-    def _ts_keys_are_upy(cls, v):
-        """
-        Ensure time-series keys are (unit:str, period:int, year:int).
-        """
-        for (u, p, y) in v:
-            if not isinstance(u, str):
-                raise TypeError(f"time-series key has non-str unit: {u!r}")
-        return v
+    @property
+    def spillage_cost(self) -> pd.Series:
+        return self._static_series("spillage_cost")
 
-    @field_validator("inflow", "availability", "e_nom_ts", mode="after")
-    def _ts_units_subset_of_units(cls, v, info):
-        units = set(info.data.get("unit", []))
-        extra_units = {u for (u, p, y) in v if u not in units}
-        if extra_units:
-            raise ValueError(
-                f"{info.field_name} contains unknown units: {sorted(extra_units)}"
-            )
-        return v
+    @property
+    def e_nom_inv_cost(self) -> pd.DataFrame:
+        if self.investment_costs.empty:
+            return pd.DataFrame(columns=["unit", "year", "e_nom_inv_cost"])
+        return self.investment_costs[["unit", "year", "e_nom_inv_cost"]].dropna(subset=["e_nom_inv_cost"]).reset_index(drop=True)
 
-    @field_validator("duration_charge", "duration_discharge", mode="after")
-    def _duration_non_negative(cls, v, info):
-        for unit, duration in v.items():
-            if duration <= 0:
-                raise ValueError(f"{info.field_name} for {unit} must be > 0 hours, got {duration}")
-        return v
+    def to_timeseries_table(self) -> pd.DataFrame:
+        frames = [frame for frame in (self.inflow, self.availability, self.e_nom_ts) if not frame.empty]
+        if not frames:
+            return pd.DataFrame(columns=["unit", "period", "year", "inflow", "availability", "e_nom_ts"])
+        out = frames[0].copy()
+        for frame in frames[1:]:
+            out = out.merge(frame, on=["unit", "period", "year"], how="outer")
+        return out
+
+    def static_dict(self, column: str) -> Dict[str, Any]:
+        series = self._static_series(column)
+        return {str(idx): value for idx, value in series.dropna().items()}
+
+    def timeseries_dict(self, column: str) -> Dict[UPY, Any]:
+        frame = getattr(self, column)
+        if frame.empty:
+            return {}
+        indexed = frame.set_index(["unit", "period", "year"])
+        return dataframe_to_multiindex_dict(indexed, column)
+
+    def investment_costs_dict(self) -> Dict[Tuple[U, Y], float]:
+        if self.investment_costs.empty:
+            return {}
+        indexed = self.investment_costs.set_index(["unit", "year"])
+        return dataframe_to_multiindex_dict(indexed, "e_nom_inv_cost")
+
+    def to_flat_tables(self) -> Dict[str, pd.DataFrame]:
+        return {
+            "static": self.static.copy(),
+            "inflow": self.inflow.copy(),
+            "availability": self.availability.copy(),
+            "e_nom_ts": self.e_nom_ts.copy(),
+            "investment_costs": self.investment_costs.copy(),
+        }
+
+    def to_legacy_dicts(self) -> Dict[str, Dict[Any, Any]]:
+        data: Dict[str, Dict[Any, Any]] = {col: self.static_dict(col) for col in self.static.columns}
+        data["inflow"] = self.timeseries_dict("inflow")
+        data["availability"] = self.timeseries_dict("availability")
+        data["e_nom_ts"] = self.timeseries_dict("e_nom_ts")
+        data["e_nom_inv_cost"] = self.investment_costs_dict()
+        return data

@@ -35,7 +35,9 @@ def default_electric_bus(
         Bus identifier for electricity or the fallback.
     """
     if buses is not None:
-        for b, c in getattr(buses, "carrier", {}).items():
-            if str(c).lower() == "electricity":
-                return str(b)
+        carrier_series = getattr(buses, "carrier", None)
+        if carrier_series is not None:
+            for b, c in carrier_series.items():
+                if str(c).lower() == "electricity":
+                    return str(b)
     return sets.buses[0] if getattr(sets, "buses", None) else fallback

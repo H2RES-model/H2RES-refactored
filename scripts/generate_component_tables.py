@@ -15,6 +15,7 @@ from data_models.Generators import Generators
 from data_models.StorageUnits import StorageUnits
 from data_models.Demand import Demand
 from data_models.SystemParameters import SystemParameters
+from data_models.table_schema import TableSpec
 
 OUTPUT_DIR = ROOT / "docs" / "components" / "_tables"
 
@@ -67,6 +68,9 @@ def get_extra(field: Any, key: str, fallback: str) -> str:
 
 
 def render_table(model: type[BaseModel]) -> str:
+    if hasattr(model, "TABLE_SPECS"):
+        return render_table_specs(model)
+
     lines = []
     lines.append("| Attribute | Type | Unit | Description | Status |")
     lines.append("| --- | --- | --- | --- | --- |")
@@ -79,6 +83,34 @@ def render_table(model: type[BaseModel]) -> str:
         status = get_extra(field, "status", status_default)
         desc = field.description or ""
         lines.append(f"| `{name}` | {type_str} | {unit} | {desc} | {status} |")
+
+    return "\n".join(lines) + "\n"
+
+
+def render_table_specs(model: type[BaseModel]) -> str:
+    lines = []
+    lines.append("| Table | Index | Column | Type | Unit | Status | Description |")
+    lines.append("| --- | --- | --- | --- | --- | --- | --- |")
+
+    table_specs: Dict[str, TableSpec] = getattr(model, "TABLE_SPECS", {})
+    for name, spec in table_specs.items():
+        index_str = ", ".join(spec.index) if spec.index else "-"
+        for col in spec.columns:
+            lines.append(
+                f"| `{name}` | {index_str} | `{col.name}` | {col.dtype} | {col.unit} | {col.status} | {col.description} |"
+            )
+
+    if model.model_fields:
+        for name, field in model.model_fields.items():
+            extra = field.json_schema_extra or {}
+            if extra.get("table_spec"):
+                continue
+            type_str = format_type(field.annotation)
+            unit = get_extra(field, "unit", "n.a.")
+            status_default = "mandatory" if field.is_required() else "optional"
+            status = get_extra(field, "status", status_default)
+            desc = field.description or ""
+            lines.append(f"| `field` | - | `{name}` | {type_str} | {unit} | {status} | {desc} |")
 
     return "\n".join(lines) + "\n"
 

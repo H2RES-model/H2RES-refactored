@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Union
 import numpy as np
 import pandas as pd
 
@@ -81,7 +81,6 @@ def load_chp_tes(
     store: StorageRecordStore,
     default_carrier: str,
     default_bus: str,
-    sector_key: Optional[str],
 ) -> None:
     """Load CHP thermal storage (TES) units for non-electricity sectors.
 
@@ -90,9 +89,8 @@ def load_chp_tes(
         store: StorageRecordStore that receives per-unit fields.
         default_carrier: Default carrier when missing in input.
         default_bus: Default bus when missing in input.
-        sector_key: Sector name for conditional loading.
     """
-    if sector_key == "electricity" or "chp_type" not in df_pp.columns:
+    if "chp_type" not in df_pp.columns:
         return
     chp_mask = df_pp["chp_type"].astype(str).str.upper() != "N"
     df_chp = df_pp[chp_mask & df_pp["chp_type"].notna()].copy()
@@ -142,7 +140,7 @@ def load_chp_tes(
 
 
 def load_template_storage(
-    path: Optional[str],
+    path: Optional[Union[str, pd.DataFrame]],
     sets: SystemSets,
     store: StorageRecordStore,
     default_carrier: str,
@@ -161,7 +159,11 @@ def load_template_storage(
     Raises:
         ValueError: If required columns or values are missing, or duration is invalid.
     """
-    if path:
+    if isinstance(path, pd.DataFrame):
+        df_st = path.copy()
+        path_label = "<storage-dataframe>"
+    elif path:
+        path_label = path
         try:
             _ = resolve_table_path(path)
             st_cols_available = set(read_columns(path, cache=table_cache))
@@ -201,6 +203,7 @@ def load_template_storage(
             df_st = pd.DataFrame()
     else:
         df_st = pd.DataFrame()
+        path_label = "<storage>"
 
     required_st = {
         "name", "tech", "carrier_in", "carrier_out", "bus_in", "bus_out",
@@ -210,10 +213,20 @@ def load_template_storage(
         "lifetime", "spillage_cost",
     }
     if not df_st.empty:
-        require_columns(df_st, required_st, path or "<storage>")
+        require_columns(df_st, required_st, path_label)
         if "name" in df_st.columns and getattr(sets, "storage_units", None):
             allowed_units = {str(u) for u in sets.storage_units}
             df_st = df_st[df_st["name"].astype(str).isin(allowed_units)]
+        for col, default in (
+            ("carrier_in", default_carrier),
+            ("carrier_out", default_carrier),
+            ("bus_in", default_bus),
+            ("bus_out", default_bus),
+        ):
+            if col in df_st.columns:
+                blank = df_st[col].isna() | (df_st[col].astype(str).str.strip() == "")
+                if blank.any():
+                    df_st.loc[blank, col] = default
         required_str = ["name", "tech", "carrier_in", "carrier_out", "bus_in", "bus_out"]
         required_num = [
             "e_nom",
@@ -230,7 +243,7 @@ def load_template_storage(
             "lifetime",
             "spillage_cost",
         ]
-        require_values(df_st, required_str, required_num, path or "<storage>", name_col="name")
+        require_values(df_st, required_str, required_num, path_label, name_col="name")
 
     if not df_st.empty:
         dur_ch_arr = pd.to_numeric(df_st["duration_charge"], errors="coerce").to_numpy(dtype=float)
@@ -262,14 +275,14 @@ def load_template_storage(
                 dur_ch = None
             if dur_ch is not None and dur_ch <= 0:
                 raise ValueError(
-                    f"{path} invalid duration_charge for unit '{name}': {dur_ch}"
+                    f"{path_label} invalid duration_charge for unit '{name}': {dur_ch}"
                 )
             dur_dis = float(getattr(row, "duration_discharge", np.nan))
             if np.isnan(dur_dis):
                 dur_dis = None
             if dur_dis is not None and dur_dis <= 0:
                 raise ValueError(
-                    f"{path} invalid duration_discharge for unit '{name}': {dur_dis}"
+                    f"{path_label} invalid duration_discharge for unit '{name}': {dur_dis}"
                 )
 
             p_charge_nom_val = getattr(row, "p_charge_nom", None)
@@ -338,8 +351,8 @@ def load_inflows(
     units: List[str],
     sets: SystemSets,
     table_cache: Optional[TableCache] = None,
-) -> Dict[UPY, float]:
-    """Load hydro inflows and convert to a long mapping.
+) -> pd.DataFrame:
+    """Load hydro inflows and convert to a long table.
 
     Args:
         path: Path to the inflow table.
@@ -347,14 +360,13 @@ def load_inflows(
         sets: SystemSets with modeled years and periods.
 
     Returns:
-        Mapping keyed by (unit, period, year).
+        Long DataFrame with columns unit, period, year, inflow.
 
     Raises:
         ValueError: If required columns are missing.
     """
-    inflow_local: Dict[UPY, float] = {}
     if not path or not units:
-        return inflow_local
+        return pd.DataFrame(columns=["unit", "period", "year", "inflow"])
     inflow_cols_available = set(read_columns(path, cache=table_cache))
     inflow_cols = ["year", "period"] + [u for u in units if u in inflow_cols_available]
     df_in = read_table(path, columns=inflow_cols, cache=table_cache)
@@ -366,9 +378,8 @@ def load_inflows(
     value_cols = [c for c in df_in.columns if c not in id_vars and c in units]
     if value_cols:
         stacked = stack_compat(df_in, id_vars, value_cols)
-        inflow_local = {}
-        for idx, val in stacked.items():
-            year, period, unit = idx  # type: ignore
-            inflow_local[(str(unit), int(period), int(year))] = float(val)
-        del stacked
-    return inflow_local
+        out = stacked.reset_index()
+        out.columns = ["year", "period", "unit", "inflow"]
+        out["unit"] = out["unit"].astype(str)
+        return out[["unit", "period", "year", "inflow"]].reset_index(drop=True)
+    return pd.DataFrame(columns=["unit", "period", "year", "inflow"])

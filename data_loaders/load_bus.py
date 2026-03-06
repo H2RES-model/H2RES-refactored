@@ -9,19 +9,18 @@ from data_models.SystemSets import SystemSets
 from data_models.Bus import Bus
 from data_loaders.helpers.defaults import default_carrier, default_electric_bus
 from data_loaders.helpers.io import TableCache, read_columns, read_table
+from data_loaders.helpers.model_factory import build_model
 from data_loaders.helpers.transport_utils import _is_electric_transport_tech
 
 def load_bus(
     powerplants_path: str,
     storage_path: str,
     buses_path: Optional[str] = None,
-    electricity_demand_path: Optional[str] = None,
-    heating_demand_path: Optional[str] = None,
-    cooling_demand_path: Optional[str] = None,
-    industry_demand_path: Optional[str] = None,
+    demand_paths: Optional[Dict[str, str]] = None,
+    transport_static: Optional[pd.DataFrame] = None,
     transport_zones_path: Optional[str] = None,
     *,
-    sector: Optional[str] = None,
+    allowed_carriers: Optional[List[str]] = None,
     sets: SystemSets,
     existing_buses: Optional[Bus] = None,
     table_cache: Optional[TableCache] = None,
@@ -34,11 +33,10 @@ def load_bus(
         powerplants_path: Path to powerplants (or converters) input file.
         storage_path: Path to storage template file.
         buses_path: Optional buses metadata file.
-        electricity_demand_path: Optional electricity demand file (for bus discovery).
-        heating_demand_path: Optional heating demand file (for bus discovery).
-        cooling_demand_path: Optional cooling demand file (for bus discovery).
-        transport_zones_path: Optional transport zones input for bus discovery.
-        sector: Sector name for filtering carriers.
+        demand_paths: Optional mapping of carrier -> demand file for bus discovery.
+        transport_static: Optional normalized transport static table.
+        transport_zones_path: Optional raw transport zones input for backward compatibility.
+        allowed_carriers: Optional allowed carriers for this load call.
         sets: SystemSets containing known units and carriers.
         existing_buses: Existing Bus model to merge into (existing wins).
 
@@ -53,16 +51,8 @@ def load_bus(
         enumerate all buses explicitly.
     """
 
-    sector_carrier_map = {
-        "electricity": "electricity",
-        "heating": "heat",
-        "cooling": "cooling",
-        "industry": "industry_heat",
-    }
-    sector_key = sector.strip().lower() if sector else None
-    if sector_key and sector_key not in sector_carrier_map:
-        raise ValueError(f"Unknown sector '{sector}'. Expected one of: {sorted(sector_carrier_map)}")
-    sector_carrier = sector_carrier_map.get(sector_key) if sector_key else None
+    normalized_allowed = {str(c).strip().lower() for c in (allowed_carriers or []) if str(c).strip()}
+    demand_paths = dict(demand_paths or {})
 
     df_pp = read_table(powerplants_path, cache=table_cache)
     df_storage = read_table(storage_path, cache=table_cache)
@@ -77,10 +67,21 @@ def load_bus(
     # Start from existing bus object (if any) so repeated calls only append.
     bus_names = set(existing_buses.name) if existing_buses else set()
     carrier_map: Dict[str, str] = dict(existing_buses.carrier) if existing_buses else {}
-    system_map: Dict[str, str] = dict(getattr(existing_buses, "system", {})) if existing_buses else {}
-    region_map: Dict[str, str] = dict(getattr(existing_buses, "region", {})) if existing_buses else {}
-    bus_units: Dict[str, List[str]] = {k: list(v) for k, v in (existing_buses.generators_at_bus if existing_buses else {}).items()}
-    bus_storage: Dict[str, List[str]] = {k: list(v) for k, v in (existing_buses.storage_at_bus if existing_buses else {}).items()}
+    system_map: Dict[str, str] = dict(existing_buses.system) if existing_buses else {}
+    region_map: Dict[str, str] = dict(existing_buses.region) if existing_buses else {}
+    bus_units: Dict[str, List[str]] = {}
+    bus_storage: Dict[str, List[str]] = {}
+    if existing_buses is not None and not existing_buses.attachments.empty:
+        generator_rows = existing_buses.attachments[existing_buses.attachments["component"] == "generator"]
+        storage_rows = existing_buses.attachments[existing_buses.attachments["component"] == "storage"]
+        bus_units = {
+            str(bus): [str(unit) for unit in units]
+            for bus, units in generator_rows.groupby("bus")["unit"].agg(list).items()
+        }
+        bus_storage = {
+            str(bus): [str(unit) for unit in units]
+            for bus, units in storage_rows.groupby("bus")["unit"].agg(list).items()
+        }
 
     default_carrier_value = default_carrier(sets)
     default_bus_value = default_electric_bus(sets, existing_buses)
@@ -88,9 +89,8 @@ def load_bus(
     def _carrier_allowed(carrier: Optional[str]) -> bool:
         """Determine whether a carrier is allowed for the current sector.
 
-        - When no sector filter is set (`sector_carrier` is None), all carriers are allowed.
-        - If a sector filter is active, return True only when `carrier` (after
-          normalizing case/whitespace) matches the expected sector carrier.
+        - When no carrier filter is set, all carriers are allowed.
+        - If a filter is active, return True only when `carrier` matches it.
 
         Args:
             carrier: Carrier string to check (may be None or empty).
@@ -98,11 +98,11 @@ def load_bus(
         Returns:
             True if the carrier is permitted for the current sector, False otherwise.
         """
-        if not sector_carrier:
+        if not normalized_allowed:
             return True
         if not carrier:
             return False
-        return str(carrier).strip().lower() == sector_carrier
+        return str(carrier).strip().lower() in normalized_allowed
 
     def _add_bus(bus: str, carrier: Optional[str] = None, system: Optional[str] = None, region: Optional[str] = None):
         """Register a bus and validate its metadata.
@@ -181,9 +181,6 @@ def load_bus(
         carrier_out = str(row.get("carrier_out", default_carrier_value))
         _assign_unit(bus_out, carrier_out, name, bus_units)
 
-        # Secondary output bus/carrier (e.g., CHP heat)
-        if sector_carrier and carrier_out.strip().lower() != sector_carrier:
-            continue
         bus_out_2_val = row.get("bus_out_2", None)
         if pd.notna(bus_out_2_val) and str(bus_out_2_val).strip() != "":
             bus2 = str(bus_out_2_val)
@@ -222,13 +219,23 @@ def load_bus(
             bus = str(col)
             _add_bus(bus, carrier)
 
-    _add_demand_buses(electricity_demand_path, "electricity")
-    _add_demand_buses(heating_demand_path, "heat")
-    _add_demand_buses(cooling_demand_path, "cooling")
-    _add_demand_buses(industry_demand_path, "industry_heat")
+    for carrier, path in demand_paths.items():
+        _add_demand_buses(path, carrier)
 
     # Transport buses (from zones input)
-    if transport_zones_path:
+    if transport_static is not None and not transport_static.empty:
+        df_tp = transport_static.reset_index() if transport_static.index.name == "unit" else transport_static.copy()
+        df_tp = df_tp[df_tp["supports_grid_connection"].fillna(False).astype(bool)].copy()
+        for _, row in df_tp.iterrows():
+            name = str(row.get("unit", "")).strip()
+            bus_in = str(row.get("bus_in", "")).strip()
+            if not bus_in:
+                continue
+            if known_buses_file is not None and bus_in.strip().lower() not in known_buses_file:
+                raise ValueError(f"Transport unit '{name}' references unknown bus '{bus_in}' in buses.csv")
+            carrier_val = str(row.get("carrier_in", carrier_map.get(bus_in, default_carrier_value)))
+            _assign_unit(bus_in, carrier_val, name, bus_storage)
+    elif transport_zones_path:
         df_tp = read_table(transport_zones_path, cache=table_cache)
         if not df_tp.empty:
             required_tp = {"transport_sector_bus", "tech", "fuel_type"}
@@ -269,11 +276,23 @@ def load_bus(
     for b in bus_names_sorted:
         carrier_map.setdefault(b, default_carrier_value)
 
-    return Bus(
-        name=bus_names_sorted,
-        system=system_map,
-        region=region_map,
-        carrier=carrier_map,
-        generators_at_bus=bus_units,
-        storage_at_bus=bus_storage,
-    )
+    static = pd.DataFrame({"bus": bus_names_sorted})
+    static["system"] = static["bus"].map(system_map).fillna("")
+    static["region"] = static["bus"].map(region_map).fillna("")
+    static["carrier"] = static["bus"].map(carrier_map).fillna(default_carrier_value)
+    static = static.set_index("bus", drop=True)
+
+    attachment_rows: list[dict[str, str]] = []
+    for bus, units in bus_units.items():
+        attachment_rows.extend(
+            {"bus": str(bus), "component": "generator", "unit": str(unit), "role": "output"}
+            for unit in units
+        )
+    for bus, units in bus_storage.items():
+        attachment_rows.extend(
+            {"bus": str(bus), "component": "storage", "unit": str(unit), "role": "output"}
+            for unit in units
+        )
+    attachments = pd.DataFrame(attachment_rows, columns=["bus", "component", "unit", "role"])
+
+    return build_model(Bus, static=static, attachments=attachments.reset_index(drop=True))

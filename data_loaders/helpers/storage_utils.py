@@ -4,27 +4,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from typing import Any, Dict, Hashable, Iterable, List, Set, Tuple, TypeVar
+import pandas as pd
 
 from data_models.StorageUnits import StorageUnits
 
 K = TypeVar("K", bound=Hashable)
-
-
-def merge_no_overwrite(base: Dict[K, Any], new: Dict[K, Any]) -> Dict[K, Any]:
-    """Merge dictionaries without clobbering existing keys.
-
-    Args:
-        base: Existing mapping (wins on conflicts).
-        new: New mapping to merge in.
-
-    Returns:
-        Merged mapping with original values preserved.
-    """
-    merged = dict(base)
-    for k, v in new.items():
-        if k not in merged:
-            merged[k] = v
-    return merged
 
 
 @dataclass
@@ -159,12 +143,16 @@ def collect_units_from_storage(ex: StorageUnits) -> set[str]:
         data = getattr(ex, attr, None)
         if isinstance(data, dict):
             units.update(str(k) for k in data.keys())
-    for attr in ("e_nom_inv_cost", "inflow"):
+        elif isinstance(data, pd.Series):
+            units.update(str(k) for k in data.dropna().index.tolist())
+    for attr in ("e_nom_inv_cost", "inflow", "availability", "e_nom_ts"):
         data = getattr(ex, attr, None)
         if isinstance(data, dict):
             for key in data.keys():
                 if isinstance(key, tuple) and key:
                     units.add(str(key[0]))
+        elif isinstance(data, pd.DataFrame) and not data.empty and "unit" in data.columns:
+            units.update(data["unit"].dropna().astype(str).tolist())
     return units
 
 
@@ -197,4 +185,25 @@ def assert_unit_key_subset(
         extra = {
             str(k[0]) for k in data.keys() if isinstance(k, tuple) and k
         } - unit_set
+        assert not extra, f"{name} has unknown units: {sorted(extra)}"
+
+
+def assert_frame_unit_subset(
+    units: Iterable[str],
+    frames: Iterable[Tuple[str, pd.DataFrame]],
+) -> None:
+    """Assert that all frame ``unit`` columns reference known units.
+
+    Args:
+        units: Iterable of valid unit names.
+        frames: Sequence of (name, frame) pairs.
+
+    Raises:
+        AssertionError: If any frame contains unknown unit values.
+    """
+    unit_set = {str(u) for u in units}
+    for name, frame in frames:
+        if frame.empty or "unit" not in frame.columns:
+            continue
+        extra = set(frame["unit"].dropna().astype(str).unique().tolist()) - unit_set
         assert not extra, f"{name} has unknown units: {sorted(extra)}"

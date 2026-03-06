@@ -1,8 +1,9 @@
-| Attribute | Type | Unit | Description | Status |
-| --- | --- | --- | --- | --- |
-| `name` | List[str] | n.a. | All buses in the system. | optional |
-| `system` | Dict[str, str] | n.a. | System/country tag for each bus. | optional |
-| `region` | Dict[str, str] | n.a. | Region/zone for each bus. | optional |
-| `carrier` | Dict[str, str] | n.a. | Carrier assigned to each bus. | optional |
-| `generators_at_bus` | Dict[str, List[str]] | n.a. | Generator/converter units on each bus. | optional |
-| `storage_at_bus` | Dict[str, List[str]] | n.a. | Storage units on each bus. | optional |
+| Table | Index | Column | Type | Unit | Status | Description |
+| --- | --- | --- | --- | --- | --- | --- |
+| `table` | bus | `bus` | string | n.a. | mandatory | Bus identifier. |
+| `table` | bus | `system` | string | n.a. | optional | System/country tag for the bus. |
+| `table` | bus | `region` | string | n.a. | optional | Region/zone tag for the bus. |
+| `table` | bus | `carrier` | string | n.a. | mandatory | Carrier assigned to the bus. |
+| `attachments` | - | `bus` | string | n.a. | mandatory | Bus identifier. |
+| `attachments` | - | `component` | string | n.a. | mandatory | Attached component collection name. |
+| `attachments` | - | `unit` | string | n.a. | mandatory | Attached unit identifier. |

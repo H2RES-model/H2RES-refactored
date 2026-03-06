@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Dict, Optional, Literal, cast
+from typing import Literal, Optional, cast
 import pandas as pd
 
 from data_models.SystemSets import SystemSets
@@ -15,7 +15,7 @@ def load_generators_static(
     sets: SystemSets,
     buses: Bus,
     table_cache: Optional[TableCache] = None,
-) -> Dict[str, object]:
+) -> pd.DataFrame:
     """Load static generator parameters from the powerplants table.
 
     When used: called by `load_generators` to populate static generator inputs.
@@ -126,36 +126,38 @@ def load_generators_static(
 
     gen_units = set(sets.units)
     if not gen_units:
-        return {
-            "units": [],
-            "tech": {},
-            "fuel": {},
-            "unit_type": {},
-            "carrier_in": {},
-            "carrier_out": {},
-            "bus_in": {},
-            "bus_out": {},
-            "bus_out_2": {},
-            "carrier_out_2": {},
-            "p_nom": {},
-            "p_nom_max": {},
-            "cap_factor": {},
-            "capital_cost": {},
-            "ramping_cost": {},
-            "ramp_up_rate": {},
-            "ramp_down_rate": {},
-            "co2_intensity": {},
-            "decom_start_existing": {},
-            "decom_start_new": {},
-            "final_cap": {},
-            "lifetime": {},
-            "var_cost_no_fuel": {},
-            "efficiency": {},
-            "chp_power_to_heat": {},
-            "chp_power_loss_factor": {},
-            "chp_max_heat": {},
-            "chp_type": {},
-        }
+        return pd.DataFrame(columns=[
+            "unit",
+            "system",
+            "region",
+            "tech",
+            "fuel",
+            "unit_type",
+            "carrier_in",
+            "carrier_out",
+            "bus_in",
+            "bus_out",
+            "bus_out_2",
+            "carrier_out_2",
+            "p_nom",
+            "p_nom_max",
+            "cap_factor",
+            "capital_cost",
+            "ramping_cost",
+            "ramp_up_rate",
+            "ramp_down_rate",
+            "co2_intensity",
+            "decom_start_existing",
+            "decom_start_new",
+            "final_cap",
+            "lifetime",
+            "var_cost_no_fuel",
+            "efficiency",
+            "chp_power_to_heat",
+            "chp_power_loss_factor",
+            "chp_max_heat",
+            "chp_type",
+        ])
 
     df_gen = df[df["name"].isin(gen_units)].copy()
     if df_gen.empty:
@@ -175,7 +177,7 @@ def load_generators_static(
         "var_cost_no_fuel",
         "efficiency",
     ]
-    missing_values: Dict[str, list] = {}
+    missing_values: dict[str, list] = {}
     for col in required_str:
         mask = df_gen[col].isna() | (df_gen[col].astype(str).str.strip() == "")
         if mask.any():
@@ -190,115 +192,48 @@ def load_generators_static(
 
     default_carrier = sets.carriers[0] if getattr(sets, "carriers", None) else "electricity"
     default_bus = None
-    if getattr(buses, "carrier", None):
-        for bus_id, carrier in buses.carrier.items():
+    bus_carrier = getattr(buses, "carrier", None)
+    if bus_carrier is not None:
+        for bus_id, carrier in bus_carrier.items():
             if str(carrier).lower() == "electricity":
                 default_bus = bus_id
                 break
     if default_bus is None:
         default_bus = sets.buses[0] if getattr(sets, "buses", None) else "SystemBus"
 
-    tech: Dict[str, str] = df_gen["tech"].astype(str).to_dict()
-    system: Dict[str, str] = (
-        df_gen["system"].astype(str).to_dict()
-        if "system" in df_gen.columns
-        else {}
+    static_df = pd.DataFrame(index=df_gen.index)
+    static_df.index.name = "unit"
+    static_df["system"] = df_gen["system"].astype(str) if "system" in df_gen.columns else ""
+    static_df["region"] = df_gen["region"].astype(str) if "region" in df_gen.columns else ""
+    static_df["tech"] = df_gen["tech"].astype(str)
+    static_df["fuel"] = df_gen["fuel"].astype(str)
+    static_df["unit_type"] = pd.Series(
+        {u: norm_unit_type(df_gen.at[u, "unit_type"]) for u in units},
+        dtype="string",
     )
-    region: Dict[str, str] = (
-        df_gen["region"].astype(str).to_dict()
-        if "region" in df_gen.columns
-        else {}
-    )
-    fuel: Dict[str, str] = df_gen["fuel"].astype(str).to_dict()
-    unit_type: Dict[str, Literal["supply", "conversion"]] = {
-        u: norm_unit_type(df_gen.at[u, "unit_type"]) for u in units
-    }
-
-    carrier_out: Dict[str, str] = (
-        series_with_default(df_gen, "carrier_out", default_carrier, str).to_dict()
-    )
-    carrier_out_2: Dict[str, Optional[str]] = (
-        optional_str_full(df_gen, "carrier_out_2").to_dict()
-    )
-    carrier_in: Dict[str, Optional[str]] = (
-        optional_str_full(df_gen, "carrier_in").to_dict()
-    )
-
-    bus_out: Dict[str, str] = (
-        series_with_default(df_gen, "bus_out", default_bus, str).to_dict()
-    )
-    bus_out_2: Dict[str, Optional[str]] = (
-        optional_str_full(df_gen, "bus_out_2").to_dict()
-    )
-    bus_in: Dict[str, Optional[str]] = (
-        optional_str_full(df_gen, "bus_in").to_dict()
-    )
-
-    p_nom: Dict[str, float] = df_gen["p_nom"].astype(float).to_dict()
-    p_nom_max: Dict[str, float] = df_gen["p_nom_max"].astype(float).to_dict()
-    cap_factor: Dict[str, float] = df_gen["cap_factor"].astype(float).to_dict()
-    capital_cost: Dict[str, float] = df_gen["capital_cost"].astype(float).to_dict()
-    ramping_cost: Dict[str, float] = df_gen["ramping_cost"].astype(float).to_dict()
-    ramp_up_rate: Dict[str, float] = df_gen["ramp_up_rate"].astype(float).to_dict()
-    ramp_down_rate: Dict[str, float] = df_gen["ramp_down_rate"].astype(float).to_dict()
-    co2_intensity: Dict[str, float] = df_gen["co2_intensity"].astype(float).to_dict()
-    decom_start_existing: Dict[str, int] = df_gen["decom_start_existing"].astype(int).to_dict()
-    decom_start_new: Dict[str, int] = df_gen["decom_start_new"].astype(int).to_dict()
-    final_cap: Dict[str, float] = df_gen["final_cap"].astype(float).to_dict()
-    lifetime: Dict[str, int] = df_gen["lifetime"].astype(int).to_dict()
-    var_cost_no_fuel: Dict[str, float] = df_gen["var_cost_no_fuel"].astype(float).to_dict()
-    efficiency: Dict[str, float] = df_gen["efficiency"].astype(float).to_dict()
-
-    chp_power_to_heat: Dict[str, float] = (
-        df_gen["chp_power_to_heat"].dropna().astype(float).to_dict()
-        if "chp_power_to_heat" in df_gen.columns
-        else {}
-    )
-    chp_power_loss_factor: Dict[str, float] = (
-        df_gen["chp_power_loss_factor"].dropna().astype(float).to_dict()
-        if "chp_power_loss_factor" in df_gen.columns
-        else {}
-    )
-    chp_max_heat: Dict[str, float] = (
-        df_gen["chp_max_heat"].dropna().astype(float).to_dict()
-        if "chp_max_heat" in df_gen.columns
-        else {}
-    )
-    chp_type: Dict[str, str] = (
-        df_gen["chp_type"].dropna().astype(str).to_dict()
-        if "chp_type" in df_gen.columns
-        else {}
-    )
-
-    return {
-        "units": units,
-        "system": system,
-        "region": region,
-        "tech": tech,
-        "fuel": fuel,
-        "unit_type": unit_type,
-        "carrier_in": carrier_in,
-        "carrier_out": carrier_out,
-        "bus_in": bus_in,
-        "bus_out": bus_out,
-        "bus_out_2": bus_out_2,
-        "carrier_out_2": carrier_out_2,
-        "p_nom": p_nom,
-        "p_nom_max": p_nom_max,
-        "cap_factor": cap_factor,
-        "capital_cost": capital_cost,
-        "ramping_cost": ramping_cost,
-        "ramp_up_rate": ramp_up_rate,
-        "ramp_down_rate": ramp_down_rate,
-        "co2_intensity": co2_intensity,
-        "decom_start_existing": decom_start_existing,
-        "decom_start_new": decom_start_new,
-        "final_cap": final_cap,
-        "lifetime": lifetime,
-        "var_cost_no_fuel": var_cost_no_fuel,
-        "efficiency": efficiency,
-        "chp_power_to_heat": chp_power_to_heat,
-        "chp_power_loss_factor": chp_power_loss_factor,
-        "chp_max_heat": chp_max_heat,
-        "chp_type": chp_type,
-    }
+    static_df["carrier_in"] = optional_str_full(df_gen, "carrier_in").astype("string")
+    static_df["carrier_out"] = series_with_default(df_gen, "carrier_out", default_carrier, str).astype("string")
+    static_df["bus_in"] = optional_str_full(df_gen, "bus_in").astype("string")
+    static_df["bus_out"] = series_with_default(df_gen, "bus_out", default_bus, str).astype("string")
+    static_df["bus_out_2"] = optional_str_full(df_gen, "bus_out_2").astype("string")
+    static_df["carrier_out_2"] = optional_str_full(df_gen, "carrier_out_2").astype("string")
+    for col in [
+        "p_nom",
+        "p_nom_max",
+        "cap_factor",
+        "capital_cost",
+        "ramping_cost",
+        "ramp_up_rate",
+        "ramp_down_rate",
+        "co2_intensity",
+        "final_cap",
+        "var_cost_no_fuel",
+        "efficiency",
+    ]:
+        static_df[col] = pd.to_numeric(df_gen[col], errors="raise").astype(float)
+    for col in ["decom_start_existing", "decom_start_new", "lifetime"]:
+        static_df[col] = pd.to_numeric(df_gen[col], errors="raise").astype(int)
+    for col in ["chp_power_to_heat", "chp_power_loss_factor", "chp_max_heat"]:
+        static_df[col] = pd.to_numeric(df_gen[col], errors="coerce").astype(float) if col in df_gen.columns else pd.Series(index=df_gen.index, dtype=float)
+    static_df["chp_type"] = df_gen["chp_type"].astype("string") if "chp_type" in df_gen.columns else pd.Series(index=df_gen.index, dtype="string")
+    return static_df.reset_index()
