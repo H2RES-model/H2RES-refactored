@@ -38,6 +38,11 @@ def load_sector(
     heating_demand_path: Optional[str] = None,
     cooling_demand_path: Optional[str] = None,
     industry_demand_path: Optional[str] = None,
+    transport_general_params_path: Optional[str] = None,
+    transport_zones_path: Optional[str] = None,
+    transport_availability_path: Optional[str] = None,
+    transport_demand_path: Optional[str] = None,
+    write_transport_storage_units: bool = True,
     inflow_path: Optional[str] = None,
     sector: Optional[str] = None,
     existing_system: Optional[SystemParameters] = None,
@@ -58,8 +63,13 @@ def load_sector(
         electricity_demand_path: Path to electricity demand time series.
         heating_demand_path: Path to heating demand time series.
         cooling_demand_path: Path to cooling demand time series.
+        transport_general_params_path: Path to general transport parameters.
+        transport_zones_path: Path to transport zones modeling input.
+        transport_availability_path: Path to transport availability time series.
+        transport_demand_path: Path to transport demand time series.
+        write_transport_storage_units: Write transport_storage_units.csv to disk.
         inflow_path: Path to hydro inflow time series.
-        sector: Sector name used for defaults ("electricity", "heating", "cooling").
+        sector: Sector name used for defaults ("electricity", "heating", "cooling", "industry").
         existing_system: Existing SystemParameters to merge into (existing wins).
 
     Returns:
@@ -109,6 +119,25 @@ def load_sector(
             storage_path = storage_path or os.path.join(base_dir, "storage_units.csv")
             industry_demand_path = industry_demand_path or os.path.join(base_dir, "industry_demand.csv")
 
+    if any([transport_zones_path, transport_availability_path, transport_demand_path]):
+        if not all([transport_zones_path, transport_availability_path, transport_demand_path]):
+            raise ValueError(
+                "transport_zones_path, transport_availability_path, and transport_demand_path "
+                "must be provided together."
+            )
+    if transport_general_params_path is None and any(
+        [transport_zones_path, transport_availability_path, transport_demand_path]
+    ):
+        transport_general_params_path = os.path.join(
+            "data", "transport", "transport_general_parameters.xlsx"
+        )
+
+    transport_enabled = sector_key == "electricity"
+    transport_general_params_for_sector = transport_general_params_path if transport_enabled else None
+    transport_zones_for_sector = transport_zones_path if transport_enabled else None
+    transport_availability_for_sector = transport_availability_path if transport_enabled else None
+    transport_demand_for_sector = transport_demand_path if transport_enabled else None
+
     if existing_system is None:
         required = {
             "powerplants_path": powerplants_path,
@@ -120,7 +149,13 @@ def load_sector(
         missing = [name for name, val in required.items() if not val]
         if missing:
             raise ValueError(f"Missing required inputs for initial load: {missing}")
-        if not (electricity_demand_path or heating_demand_path or cooling_demand_path or industry_demand_path):
+        if not (
+            electricity_demand_path
+            or heating_demand_path
+            or cooling_demand_path
+            or industry_demand_path
+            or transport_demand_for_sector
+        ):
             raise ValueError("At least one demand CSV path is required for initial load.")
 
     # --------------------------------------------------------------
@@ -141,6 +176,7 @@ def load_sector(
             fuel_cost_path=fuel_cost_path,
             buses_path=buses_path,
             storage_path=storage_path,
+            transport_zones_path=transport_zones_for_sector,
             existing_sets=existing_system.sets if existing_system else None,
             table_cache=table_cache,
         )
@@ -149,7 +185,15 @@ def load_sector(
     # 2. Buses (uses demand headers + csv templates)
     # --------------------------------------------------------------
     if existing_system and not any(
-        [powerplants_path, storage_path, electricity_demand_path, heating_demand_path, cooling_demand_path, industry_demand_path]
+        [
+            powerplants_path,
+            storage_path,
+            electricity_demand_path,
+            heating_demand_path,
+            cooling_demand_path,
+            industry_demand_path,
+            transport_zones_for_sector,
+        ]
     ):
         buses = existing_system.bus
     else:
@@ -165,6 +209,7 @@ def load_sector(
             heating_demand_path=heating_demand_path,
             cooling_demand_path=cooling_demand_path,
             industry_demand_path=industry_demand_path,
+            transport_zones_path=transport_zones_for_sector,
             sector=sector,
             sets=sets,
             existing_buses=existing_system.bus if existing_system else None,
@@ -193,7 +238,17 @@ def load_sector(
     # --------------------------------------------------------------
     # 4. Storage
     # --------------------------------------------------------------
-    if existing_system and not any([powerplants_path, storage_path, inflow_path]):
+    if existing_system and not any(
+        [
+            powerplants_path,
+            storage_path,
+            inflow_path,
+            transport_general_params_for_sector,
+            transport_zones_for_sector,
+            transport_availability_for_sector,
+            transport_demand_for_sector,
+        ]
+    ):
         storage = existing_system.storage
     else:
         if not powerplants_path or not storage_path:
@@ -202,6 +257,12 @@ def load_sector(
             powerplants_path=powerplants_path,
             storage_path=storage_path or powerplants_path,
             inflow_path=inflow_path,
+            transport_general_params_path=transport_general_params_for_sector,
+            transport_zones_path=transport_zones_for_sector,
+            transport_availability_path=transport_availability_for_sector,
+            transport_demand_path=transport_demand_for_sector,
+            write_transport_storage_units=write_transport_storage_units,
+            buses_path=buses_path,
             sector=sector,
             sets=sets,
             buses=buses,
@@ -210,7 +271,7 @@ def load_sector(
         )
 
     # --------------------------------------------------------------
-    # 5. Demand (electricity/heat/cooling)
+    # 5. Demand (electricity/heat/cooling/industry/transport)
     # --------------------------------------------------------------
     demand_electricity_path = electricity_demand_path
     demand_heating_path = heating_demand_path
@@ -234,7 +295,13 @@ def load_sector(
         demand_cooling_path = None
 
     if existing_system and not any(
-        [demand_electricity_path, demand_heating_path, demand_cooling_path, demand_industry_path]
+        [
+            demand_electricity_path,
+            demand_heating_path,
+            demand_cooling_path,
+            demand_industry_path,
+            transport_demand_for_sector,
+        ]
     ):
         demand = existing_system.demand
     else:
@@ -244,7 +311,11 @@ def load_sector(
             heating_path=demand_heating_path or None,
             cooling_path=demand_cooling_path or None,
             industry_path=demand_industry_path or None,
+            transport_demand_path=transport_demand_for_sector,
+            transport_general_params_path=transport_general_params_for_sector,
+            transport_zones_path=transport_zones_for_sector,
             buses=buses,
+            buses_path=buses_path,
             existing_demand=existing_system.demand if existing_system else None,
             table_cache=table_cache,
         )
