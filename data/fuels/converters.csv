@@ -1,0 +1,6 @@
+system,region,name,tech,fuel,unit_type,carrier_in,carrier_out,bus_in,bus_out,p_nom,p_nom_max,cap_factor,capital_cost,lifetime,decom_start_existing,decom_start_new,final_cap,efficiency,co2_intensity,var_cost_no_fuel,ramp_up_rate,ramp_down_rate,ramping_cost,e_nom,p_charge_nom,standby_loss,efficiency_charge,efficiency_discharge,chp_power_to_heat,chp_power_loss_factor,chp_max_heat,chp_type,carrier_out_2,bus_out_2
+HR,HR,PEMFC_CHP,PEMFC_CHP,hydrogen,conversion,hydrogen,electricity,HR_H2,HR_EL,0,100000,1,1300000,15,10,10,0,0.5,0,0,1,1,0,,,,,,,,,,,
+HR,HR,SOFC_CHP,SOFC_CHP,hydrogen,conversion,hydrogen,electricity,HR_H2,HR_EL,0,100000,1,3300000,15,10,10,0,0.6,0,0,1,1,0,,,,,,,,,,,
+HR,HR,PEM_elec,PEM_elec,electricity,conversion,electricity,hydrogen,HR_EL,HR_H2,10,100000,1,1437500,15,10,10,0,0.64,0,0,1,1,0,,,,,,,,,,,
+HR,HR,SOEC_elec,SOEC_elec,electricity,conversion,electricity,hydrogen,HR_EL,HR_H2,10,100000,1,5625000,15,10,10,0,0.8,0,0,1,1,0,,,,,,,,,,,
+HR,HR,Alkaline_EC,Alkaline_EC,electricity,conversion,electricity,hydrogen,HR_EL,HR_H2,10,100000,1,902778,15,10,10,0,0.72,0,0,1,1,0,,,,,,,,,,,
