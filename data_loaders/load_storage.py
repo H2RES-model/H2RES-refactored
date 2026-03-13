@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from typing import Optional
-
+from typing import Optional, Union
+from pathlib import Path
 import pandas as pd
 
 from data_models.Bus import Bus
@@ -12,27 +12,15 @@ from data_models.SystemSets import SystemSets
 from data_models.Transport import Transport
 from data_loaders.helpers.io import TableCache
 from data_loaders.helpers.model_factory import build_model, is_strict_validation
-from data_loaders.helpers.storage_component import (
-    apply_transport_power,
-    build_e_nom_ts,
-    build_storage_static_frame,
-    build_storage_store,
-    load_storage_inflow_ts,
-    merge_storage_components,
-)
-from data_loaders.helpers.storage_utils import assert_frame_unit_subset
+from data_loaders.helpers.storage_loader import build_storage_inputs
+from data_loaders.helpers.timeseries import empty_frame, merge_keyed_frames
 
 
 def load_storage(
-    powerplants_path: str,
-    storage_path: Optional[str] = None,
+    powerplants_path: Union[str, pd.DataFrame],
+    storage_path: Optional[Union[str, pd.DataFrame]] = None,
     inflow_path: Optional[str] = None,
-    transport_general_params_path: Optional[str] = None,
-    transport_zones_path: Optional[str] = None,
-    transport_availability_path: Optional[str] = None,
-    transport_demand_path: Optional[str] = None,
     write_transport_storage_units: bool = True,
-    buses_path: Optional[str] = None,
     *,
     transport: Optional[Transport] = None,
     include_chp_tes: bool = True,
@@ -43,63 +31,66 @@ def load_storage(
 ) -> StorageUnits:
     """Build StorageUnits from unit data, templates, and inflow data."""
 
-    store, hydro_units, availability_df, transport_power_df = build_storage_store(
+    static_df, inflow_df, availability_df, e_nom_ts_df, transport_storage_df = build_storage_inputs(
         powerplants_path=powerplants_path,
         storage_path=storage_path,
-        transport_general_params_path=transport_general_params_path,
-        transport_zones_path=transport_zones_path,
-        transport_availability_path=transport_availability_path,
-        transport_demand_path=transport_demand_path,
-        write_transport_storage_units=write_transport_storage_units,
-        buses_path=buses_path,
+        inflow_path=inflow_path,
         transport=transport,
         include_chp_tes=include_chp_tes,
         sets=sets,
-        buses=buses,
         table_cache=table_cache,
     )
 
-    if not store.unit_order:
+    if write_transport_storage_units and not transport_storage_df.empty:
+        out_path = Path("data/transport/transport_storage_units.csv")
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        transport_storage_df.to_csv(out_path, index=False)
+
+    if static_df.empty and existing_storage is None:
+        return build_model(StorageUnits)
+    if static_df.empty:
         return existing_storage or build_model(StorageUnits)
 
-    static_df = build_storage_static_frame(store)
-    static_df = apply_transport_power(
-        static_df,
-        transport_power_df,
-        canonical_transport=transport is not None,
-    )
-    inflow_df = load_storage_inflow_ts(
-        inflow_path=inflow_path,
-        hydro_units=hydro_units,
-        sets=sets,
-        table_cache=table_cache,
-    )
-    e_nom_ts_df = build_e_nom_ts(static_df, availability_df)
+    existing = existing_storage
+    if existing is not None and not existing.static.empty:
+        static_df = existing.static.combine_first(static_df)
 
-    static_df, inflow_df, availability_df, e_nom_ts_df, investment_costs, units = merge_storage_components(
-        existing_storage=existing_storage,
-        static_df=static_df,
-        inflow_df=inflow_df,
-        availability_df=availability_df,
-        e_nom_ts_df=e_nom_ts_df,
+    inflow_df = merge_keyed_frames(
+        existing.inflow.copy() if existing is not None else empty_frame(["unit", "period", "year", "inflow"]),
+        inflow_df,
+        keys=["unit", "period", "year"],
     )
-    if not static_df.empty and "unit" in static_df.columns:
-        static_df = static_df.set_index("unit", drop=True)
-    inflow_df = inflow_df.reset_index(drop=True)
-    availability_df = availability_df.reset_index(drop=True)
-    e_nom_ts_df = e_nom_ts_df.reset_index(drop=True)
-    investment_costs = investment_costs.reset_index(drop=True)
+    availability_df = merge_keyed_frames(
+        existing.availability.copy() if existing is not None else empty_frame(["unit", "period", "year", "availability"]),
+        availability_df,
+        keys=["unit", "period", "year"],
+    )
+    e_nom_ts_df = merge_keyed_frames(
+        existing.e_nom_ts.copy() if existing is not None else empty_frame(["unit", "period", "year", "e_nom_ts"]),
+        e_nom_ts_df,
+        keys=["unit", "period", "year"],
+    )
+    investment_costs = (
+        existing.investment_costs.copy()
+        if existing is not None
+        else empty_frame(["unit", "year", "e_nom_inv_cost"])
+    )
+    if not investment_costs.empty:
+        investment_costs = investment_costs.drop_duplicates(subset=["unit", "year"], keep="first").reset_index(drop=True)
+    units = sorted(static_df.index.astype(str).tolist())
 
     if is_strict_validation():
-        assert_frame_unit_subset(
-            units,
-            (
-                ("inflow", inflow_df),
-                ("e_nom_inv_cost", investment_costs),
-                ("availability", availability_df),
-                ("e_nom_ts", e_nom_ts_df),
-            ),
-        )
+        unit_set = set(units)
+        for name, frame in (
+            ("inflow", inflow_df),
+            ("e_nom_inv_cost", investment_costs),
+            ("availability", availability_df),
+            ("e_nom_ts", e_nom_ts_df),
+        ):
+            if frame.empty or "unit" not in frame.columns:
+                continue
+            extra = set(frame["unit"].dropna().astype(str).unique().tolist()) - unit_set
+            assert not extra, f"{name} has unknown units: {sorted(extra)}"
 
     return build_model(
         StorageUnits,

@@ -2,8 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Optional
-
+from typing import Optional, Union
 import pandas as pd
 
 from data_models.SystemSets import SystemSets
@@ -11,11 +10,12 @@ from data_models.Generators import Generators
 from data_models.Bus import Bus
 from data_loaders.helpers.io import TableCache
 from data_loaders.helpers.model_factory import build_model
+from data_loaders.helpers.timeseries import empty_frame, merge_keyed_frames
 from data_loaders.load_generators_static import load_generators_static
 from data_loaders.load_generators_ts import load_generators_ts
 
 def load_generators(
-    powerplants_path: str,
+    powerplants_path: Union[str, pd.DataFrame],
     sets: SystemSets,
     buses: Bus,
     renewable_profiles_path: Optional[str] = None,
@@ -59,10 +59,10 @@ def load_generators(
     if not units:
         return existing_generators or build_model(
             Generators,
-            static=pd.DataFrame(columns=[col.name for col in Generators.TABLE_SPECS["static"].columns]),
-            p_t=pd.DataFrame(columns=[col.name for col in Generators.TABLE_SPECS["p_t"].columns]),
-            var_cost=pd.DataFrame(columns=[col.name for col in Generators.TABLE_SPECS["var_cost"].columns]),
-            efficiency_ts=pd.DataFrame(columns=[col.name for col in Generators.TABLE_SPECS["efficiency_ts"].columns]),
+            static=empty_frame([col.name for col in Generators.TABLE_SPECS["static"].columns]),
+            p_t=empty_frame([col.name for col in Generators.TABLE_SPECS["p_t"].columns]),
+            var_cost=empty_frame([col.name for col in Generators.TABLE_SPECS["var_cost"].columns]),
+            efficiency_ts=empty_frame([col.name for col in Generators.TABLE_SPECS["efficiency_ts"].columns]),
         )
 
     dynamic = load_generators_ts(
@@ -87,22 +87,17 @@ def load_generators(
     if ex is not None:
         for name in ("p_t", "var_cost", "efficiency_ts"):
             existing_frame = getattr(ex, name)
-            frame = dynamic.get(name, pd.DataFrame(columns=["unit", "period", "year", name]))
-            if existing_frame.empty:
-                dynamic[name] = frame.reset_index(drop=True)
-            elif frame.empty:
-                dynamic[name] = existing_frame.reset_index(drop=True)
-            else:
-                dynamic[name] = (
-                    pd.concat([existing_frame, frame], ignore_index=True)
-                    .drop_duplicates(subset=["unit", "period", "year"], keep="first")
-                    .reset_index(drop=True)
-                )
+            frame = dynamic.get(name, empty_frame(["unit", "period", "year", name]))
+            dynamic[name] = merge_keyed_frames(
+                existing_frame.reset_index(drop=True),
+                frame.reset_index(drop=True),
+                keys=["unit", "period", "year"],
+            )
 
     return build_model(
         Generators,
         static=static,
-        p_t=dynamic.get("p_t", pd.DataFrame(columns=["unit", "period", "year", "p_t"])),
-        var_cost=dynamic.get("var_cost", pd.DataFrame(columns=["unit", "period", "year", "var_cost"])),
-        efficiency_ts=dynamic.get("efficiency_ts", pd.DataFrame(columns=["unit", "period", "year", "efficiency_ts"])),
+        p_t=dynamic.get("p_t", empty_frame(["unit", "period", "year", "p_t"])),
+        var_cost=dynamic.get("var_cost", empty_frame(["unit", "period", "year", "var_cost"])),
+        efficiency_ts=dynamic.get("efficiency_ts", empty_frame(["unit", "period", "year", "efficiency_ts"])),
     )

@@ -2,21 +2,19 @@
 
 from __future__ import annotations
 
-from typing import List, Optional
+from typing import List, Optional, Union
 import pandas as pd
 
 from data_models.SystemSets import SystemSets
-from data_loaders.helpers.io import TableCache, read_table
+from data_loaders.helpers.io import TableCache, read_table, resolve_table_path
 from data_loaders.helpers.iter_utils import union_lists
-from data_loaders.helpers.transport_utils import _is_electric_transport_tech
 
 def load_sets(
-    powerplants_path: str,
+    powerplants_path: Union[str, pd.DataFrame],
     renewable_profiles_path: Optional[str] = None,
     fuel_cost_path: Optional[str] = None,
     buses_path: Optional[str] = None,
-    storage_path: Optional[str] = None,
-    transport_zones_path: Optional[str] = None,
+    storage_path: Optional[Union[str, pd.DataFrame]] = None,
     existing_sets: Optional[SystemSets] = None,
     table_cache: Optional[TableCache] = None,
 ) -> SystemSets:
@@ -46,12 +44,14 @@ def load_sets(
     # --------------------------------------------------------------
     # 1. Read input CSVs
     # --------------------------------------------------------------
-    df_powerplant = read_table(powerplants_path, cache=table_cache)
+    df_powerplant = powerplants_path.copy() if isinstance(powerplants_path, pd.DataFrame) else read_table(powerplants_path, cache=table_cache)
     df_profiles = read_table(renewable_profiles_path, cache=table_cache) if renewable_profiles_path else None
     df_fc = read_table(fuel_cost_path, cache=table_cache) if fuel_cost_path else None
     df_buses = read_table(buses_path, cache=table_cache) if buses_path else None
-    df_storage = read_table(storage_path, cache=table_cache) if storage_path else None
-    df_transport = read_table(transport_zones_path, cache=table_cache) if transport_zones_path else None
+    if isinstance(storage_path, pd.DataFrame):
+        df_storage = storage_path.copy()
+    else:
+        df_storage = read_table(storage_path, cache=table_cache) if storage_path else None
 
     # --------------------------------------------------------------
     # 2. Basic validation of required columns
@@ -107,15 +107,8 @@ def load_sets(
             raise ValueError(
                 f"Missing required column 'name' in storage file ({storage_path})"
             )
-    if df_transport is not None:
-        required_transport_cols = {"transport_sector_bus", "tech", "fuel_type"}
-        missing_t = required_transport_cols - set(df_transport.columns)
-        if missing_t:
-            raise ValueError(
-                f"Missing required columns in transport zones file ({transport_zones_path}): "
-                f"{sorted(missing_t)}"
-            )
-
+    if renewable_profiles_path is None and fuel_cost_path is not None:
+        resolve_table_path(fuel_cost_path, cache=table_cache)
     # --------------------------------------------------------------
     # 3. Time sets from availability factor or fuel cost file
     # --------------------------------------------------------------
@@ -136,16 +129,14 @@ def load_sets(
         periods = sorted(set(periods_new).union(set(existing_sets.periods) if existing_sets else set()))
 
     # --------------------------------------------------------------
-    # 4. Buses and carriers from buses.csv (fallback to defaults)
+    # 4. Buses and carriers from buses.csv
     # --------------------------------------------------------------
     if df_buses is not None:
         buses_new: List[str] = sorted(df_buses["bus"].dropna().astype(str).unique().tolist())
         carriers_new: List[str] = sorted(df_buses["carrier"].dropna().astype(str).unique().tolist())
-        if not carriers_new:
-            carriers_new = ["Electricity"]
     else:
-        buses_new = ["SystemBus"]
-        carriers_new = ["Electricity"]
+        buses_new = []
+        carriers_new = []
 
     carriers = sorted(set(union_lists(carriers_new, getattr(existing_sets, "carriers", []))))
     buses = sorted(set(union_lists(buses_new, getattr(existing_sets, "buses", []))))
@@ -183,23 +174,6 @@ def load_sets(
     storage_template_units: List[str] = []
     if df_storage is not None and "name" in df_storage.columns:
         storage_template_units = df_storage["name"].dropna().astype(str).tolist()
-
-    if df_transport is not None:
-        # Transport params may come in either name/unit_name and only active electric
-        # rows should be injected as storage units.
-        if "tech" in df_transport.columns:
-            mask_storage = df_transport["tech"].map(_is_electric_transport_tech)
-            df_transport = df_transport[mask_storage].copy()
-        if "name" not in df_transport.columns:
-            df_transport["name"] = (
-                df_transport["transport_sector_bus"].astype(str).str.strip()
-                + "_"
-                + df_transport["tech"].astype(str).str.strip()
-                + "_"
-                + df_transport["fuel_type"].astype(str).str.strip()
-            )
-        if "name" in df_transport.columns:
-            storage_template_units += df_transport["name"].dropna().astype(str).tolist()
 
     storage_units_new: List[str] = sorted(set(hydro_storage_units) | set(storage_template_units))
     storage_units = sorted(set(union_lists(storage_units_new, getattr(existing_sets, "storage_units", []))))
