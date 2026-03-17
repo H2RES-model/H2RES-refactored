@@ -4,3 +4,5 @@ __pycache__/
 docs/_build/
 docs/api/generated/
 site/
+.tmp_tests/
+data/.tmp_incremental_prebuilt_runtime/

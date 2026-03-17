@@ -6,6 +6,7 @@ from data_models.Generators import Generators
 from data_models.StorageUnits import StorageUnits
 from data_models.Demand import Demand
 from data_models.Bus import Bus
+from data_models.Transport import Transport
 
 # Index aliases
 U = str
@@ -66,8 +67,8 @@ class SystemParameters(BaseModel):
     This brings together:
       - sets       : all index sets and subsets (SystemSets)
       - generators : all supply & conversion units (Generators)
-      - storage    : all storage units (StorageUnits)
-      - demand     : demand by (carrier, bus, period, year)
+      - storage_units : all storage units (StorageUnits)
+      - demands    : demand by (carrier, bus, period, year)
       - market     : market and price-related parameters
       - policy     : policy and emissions-related parameters
     """
@@ -76,7 +77,7 @@ class SystemParameters(BaseModel):
         description="Core index sets for the system.",
         json_schema_extra={"unit": "n.a.", "status": "mandatory"},
     )
-    bus: Bus = Field(
+    buses: Bus = Field(
         description="Network buses and carrier assignments.",
         json_schema_extra={"unit": "n.a.", "status": "mandatory"},
     )
@@ -84,13 +85,18 @@ class SystemParameters(BaseModel):
         description="Power-converting units and converters.",
         json_schema_extra={"unit": "n.a.", "status": "mandatory"},
     )
-    storage: StorageUnits = Field(
+    storage_units: StorageUnits = Field(
         description="Energy storage assets and parameters.",
         json_schema_extra={"unit": "n.a.", "status": "mandatory"},
     )
-    demand: Demand = Field(
+    demands: Demand = Field(
         description="Demand time series by carrier and bus.",
         json_schema_extra={"unit": "n.a.", "status": "mandatory"},
+    )
+    transport_units: Transport = Field(
+        default_factory=Transport,
+        description="Transport units and their time series.",
+        json_schema_extra={"unit": "n.a.", "status": "optional"},
     )
 
     #TODO: Create Pydantic dataclasses and loader functions for market and policy parameters

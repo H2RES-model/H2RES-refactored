@@ -9,12 +9,12 @@ from data_models.SystemSets import SystemSets
 from data_models.Demand import Demand
 from data_models.Bus import Bus
 from data_models.Transport import Transport
-from data_loaders.helpers.io import TableCache, read_table
+from data_loaders.helpers.io import TableCache, inspect_table, read_table
 from data_loaders.helpers.model_factory import build_model
-from data_loaders.helpers.transport_utils import load_ev_inputs, _is_electric_transport_tech
+from data_loaders.helpers.timeseries import empty_frame, filter_modeled_horizon, melt_wide_timeseries, require_time_columns
 from data_loaders.helpers.transport_integration import transport_to_system_demand
 
-Key = Tuple[str, str, str, str, int, int]  # (system, region, bus, carrier, period, year)
+DEMAND_COLUMNS = ["system", "region", "bus", "carrier", "period", "year", "p_t"]
 
 
 def load_demand(
@@ -22,9 +22,6 @@ def load_demand(
     sets: SystemSets,
     carrier_paths: Optional[Dict[str, str]] = None,
     transport: Optional[Transport] = None,
-    transport_demand_path: Optional[str] = None,
-    transport_general_params_path: Optional[str] = None,
-    transport_zones_path: Optional[str] = None,
     buses: Optional[Bus] = None,
     buses_path: Optional[str] = None,
     existing_demand: Optional[Demand] = None,
@@ -38,9 +35,6 @@ def load_demand(
         sets: SystemSets containing modeled years and periods.
         carrier_paths: Optional mapping of carrier -> demand file.
         transport: Optional canonical transport component.
-        transport_demand_path: Optional path to transport demand time series.
-        transport_general_params_path: Path to general transport parameters.
-        transport_zones_path: Path to transport zones modeling input.
         buses: Optional Bus model for validating demand columns against buses.
         buses_path: Optional buses.csv path (authoritative bus list and carriers).
         existing_demand: Existing Demand to merge into (existing wins).
@@ -58,21 +52,19 @@ def load_demand(
     # --------------------------------------------------------------
     # 1. Build bus lookup (system, region, carrier) from Bus model
     # --------------------------------------------------------------
-    default_bus = sets.buses[0] if getattr(sets, "buses", None) else "SystemBus"
-    default_carrier = sets.carriers[0] if getattr(sets, "carriers", None) else "electricity"
     bus_lookup: Dict[str, Tuple[str, str, str, str]] = {}  # lower_bus -> (system, region, bus_id, carrier)
 
     if buses is not None:
         bus_static = buses.static.reset_index()
-        for _, row in bus_static.iterrows():
-            bus_id = str(row["bus"]).strip()
+        for row in bus_static.itertuples(index=False):
+            bus_id = str(getattr(row, "bus", "")).strip()
             if not bus_id:
                 continue
             bus_lookup[bus_id.lower()] = (
-                str(row.get("system", "")).strip(),
-                str(row.get("region", "")).strip(),
+                str(getattr(row, "system", "")).strip(),
+                str(getattr(row, "region", "")).strip(),
                 bus_id,
-                str(row.get("carrier", default_carrier)).strip() or default_carrier,
+                str(getattr(row, "carrier", "")).strip(),
             )
 
     if buses_path:
@@ -81,22 +73,22 @@ def load_demand(
         missing_buses_cols = required_buses_cols - set(df_buses.columns)
         if missing_buses_cols:
             raise ValueError(f"{buses_path} missing required columns: {sorted(missing_buses_cols)}")
-        for _, row in df_buses.iterrows():
-            bus_id = str(row["bus"]).strip()
+        for row in df_buses.itertuples(index=False):
+            bus_id = str(getattr(row, "bus", "")).strip()
             if not bus_id:
                 continue
             bus_lookup[bus_id.lower()] = (
-                str(row["system"]).strip() if "system" in df_buses.columns and pd.notna(row.get("system")) else "",
-                str(row["region"]).strip() if "region" in df_buses.columns and pd.notna(row.get("region")) else "",
+                str(getattr(row, "system")).strip() if hasattr(row, "system") and pd.notna(getattr(row, "system")) else "",
+                str(getattr(row, "region")).strip() if hasattr(row, "region") and pd.notna(getattr(row, "region")) else "",
                 bus_id,
-                str(row.get("carrier", default_carrier)).strip() or default_carrier,
+                str(getattr(row, "carrier", "")).strip(),
             )
 
     def bus_info(column_name: str, carrier_hint: Optional[str]) -> Tuple[str, str, str, str]:
         """
         Return (system, region, bus_id, carrier) for a demand column.
-        If Bus model is provided, the column name must match a known bus (case-insensitive),
-        otherwise a ValueError is raised. If no Bus model is provided, fall back to defaults.
+        If Bus model is provided, the column name must match a known bus
+        (case-insensitive), otherwise a ValueError is raised.
         """
         c_lower = str(carrier_hint).lower() if carrier_hint else None
         col_lower = str(column_name).lower()
@@ -115,51 +107,39 @@ def load_demand(
                 )
             return sys, reg, bus_id, carrier
 
-        # Fallback when no Bus object is provided
-        return "", "", column_name, carrier_hint or default_carrier
+        if not carrier_hint or not str(carrier_hint).strip():
+            raise ValueError(f"Demand column '{column_name}' is missing carrier metadata.")
+        return "", "", column_name, str(carrier_hint).strip()
 
     # --------------------------------------------------------------
     # 2. Helper to read one CSV for one carrier
     # --------------------------------------------------------------
     def _read_single(path: Optional[str], carrier: str) -> pd.DataFrame:
         if path is None:
-            return pd.DataFrame(columns=["system", "region", "bus", "carrier", "period", "year", "p_t"])
+            return empty_frame(DEMAND_COLUMNS)
 
-        df = read_table(path, cache=table_cache)
-
-        # required columns
-        for col in ("year", "period"):
-            if col not in df.columns:
-                raise ValueError(
-                    f"{path} missing required column '{col}'"
-                )
-
-        # convert year/period to int
-        try:
-            df["year"] = df["year"].astype(int)
-            df["period"] = df["period"].astype(int)
-        except Exception:
-            raise ValueError(f"{path} has non-integer year/period values.")
-
-        # horizon filter
-        df = df[df["year"].isin(sets.years) & df["period"].isin(sets.periods)]
-        if df.empty:
-            return pd.DataFrame(columns=["system", "region", "bus", "carrier", "period", "year", "p_t"])
-
-        # collect demand columns
-        id_vars = ["year", "period"]
-        value_cols = [c for c in df.columns if c not in id_vars]
+        inspection = inspect_table(path, cache=table_cache)
+        require_time_columns(pd.DataFrame(columns=inspection.columns), path)
+        value_cols = [c for c in inspection.columns if c not in {"year", "period"}]
         if not value_cols:
-            return pd.DataFrame(columns=["system", "region", "bus", "carrier", "period", "year", "p_t"])
+            return empty_frame(DEMAND_COLUMNS)
+        df = read_table(path, columns=["year", "period", *value_cols], cache=table_cache)
+        require_time_columns(df, path)
+        df = filter_modeled_horizon(df, sets)
+        if df.empty:
+            return empty_frame(DEMAND_COLUMNS)
 
-        # numeric conversion
         for col in value_cols:
             df[col] = pd.to_numeric(df[col], errors="raise")
 
-        long_df = df.melt(id_vars=id_vars, value_vars=value_cols, var_name="bus_column", value_name="p_t")
-        long_df = long_df.dropna(subset=["p_t"])
+        long_df = melt_wide_timeseries(
+            df,
+            key_name="bus_column",
+            value_name="p_t",
+            value_columns=value_cols,
+        )
         if long_df.empty:
-            return pd.DataFrame(columns=["system", "region", "bus", "carrier", "period", "year", "p_t"])
+            return empty_frame(DEMAND_COLUMNS)
         if (long_df["p_t"] < 0).any():
             raise ValueError(f"Negative demand in {path} for {carrier}")
 
@@ -202,72 +182,6 @@ def load_demand(
             if (transport_df["p_t"] < 0).any():
                 raise ValueError("Negative transport demand values found.")
             demand_frames.append(transport_df)
-    # Backward-compatible raw transport path fallback.
-    elif transport_demand_path:
-        if transport_general_params_path is None or transport_zones_path is None:
-            raise ValueError(
-                "transport_general_params_path and transport_zones_path are required when transport_demand_path is provided."
-            )
-
-        params_df, _ev_availability, ev_demand_profile = load_ev_inputs(
-            general_params_path=transport_general_params_path,
-            zones_params_path=transport_zones_path,
-            ev_demand_path=transport_demand_path,
-        )
-
-        profiles_df = ev_demand_profile[
-            ev_demand_profile["year"].astype(int).isin(sets.years)
-            & ev_demand_profile["period"].astype(int).isin(sets.periods)
-        ].copy()
-        profiles_df = profiles_df.rename(columns={"ev_demand": "profile"})
-        params_electric = params_df[params_df["tech"].map(_is_electric_transport_tech)].copy()
-        if not params_electric.empty:
-            if "ev_demand_unit" not in params_electric.columns:
-                raise ValueError(
-                    "Transport params are missing 'ev_demand_unit'. "
-                    "Check that transport_demand_path is provided and matches transport sectors."
-                )
-            params_electric["bus_in"] = params_electric["bus_in"].astype(str)
-            if bus_lookup:
-                bad_bus = ~params_electric["bus_in"].str.strip().str.lower().isin(bus_lookup.keys())
-                if bad_bus.any():
-                    bad_row = params_electric.loc[bad_bus].iloc[0]
-                    excel_row = int(bad_row.name) + 2 if isinstance(bad_row.name, (int, float)) else None
-                    line_txt = f", row {excel_row}" if excel_row is not None else ""
-                    raise ValueError(
-                        f"{transport_zones_path}{line_txt}: bus_in '{bad_row['bus_in']}' not found in data/buses.csv"
-                    )
-            params_electric["bus_lookup"] = params_electric["bus_in"].str.lower().str.strip()
-            meta_rows = []
-            for bus_in in params_electric["bus_in"].dropna().astype(str).unique().tolist():
-                sys, reg, bus_id, carrier_val = bus_info(bus_in, None)
-                meta_rows.append(
-                    {
-                        "bus_lookup": bus_in.lower().strip(),
-                        "system": sys,
-                        "region": reg,
-                        "bus": bus_id,
-                        "carrier": carrier_val,
-                    }
-                )
-            meta_df = pd.DataFrame(meta_rows)
-            params_electric = (
-                params_electric.drop(columns=["system", "region"], errors="ignore")
-                .merge(meta_df, on="bus_lookup", how="left", validate="many_to_one")
-            )
-            if not profiles_df.empty:
-                transport_df = params_electric[["name", "system", "region", "bus", "carrier", "ev_demand_unit"]].merge(
-                    profiles_df,
-                    left_on="name",
-                    right_on="unit",
-                    how="inner",
-                    validate="one_to_many",
-                )
-                transport_df["p_t"] = transport_df["ev_demand_unit"].astype(float) * transport_df["profile"].astype(float)
-                if (transport_df["p_t"] < 0).any():
-                    raise ValueError("Negative transport demand values found.")
-                demand_frames.append(transport_df[["system", "region", "bus", "carrier", "period", "year", "p_t"]])
-
     if demand_frames:
         out_df = pd.concat(demand_frames, ignore_index=True)
         out_df = (
@@ -277,6 +191,6 @@ def load_demand(
             .reset_index(drop=True)
         )
     else:
-        out_df = pd.DataFrame(columns=["system", "region", "bus", "carrier", "period", "year", "p_t"])
+        out_df = empty_frame(DEMAND_COLUMNS)
 
     return build_model(Demand, p_t=out_df)

@@ -1,0 +1,160 @@
+{
+  "created_at_utc": "2026-03-13T12:54:30.068391+00:00",
+  "format": "h2res-prebuilt-system",
+  "format_version": 4,
+  "source_files": {
+    "data/buses.csv": {
+      "mtime_ns": 1773398190832884700,
+      "path": "data/buses.csv",
+      "size": 377
+    },
+    "data/cooling/COP.csv": {
+      "mtime_ns": 1773396163239047400,
+      "path": "data/cooling/COP.csv",
+      "size": 1269877
+    },
+    "data/cooling/converters.csv": {
+      "mtime_ns": 1773397464696646100,
+      "path": "data/cooling/converters.csv",
+      "size": 717
+    },
+    "data/cooling/cooling_demand.csv": {
+      "mtime_ns": 1773394377283544100,
+      "path": "data/cooling/cooling_demand.csv",
+      "size": 1396830
+    },
+    "data/cooling/storage_units.csv": {
+      "mtime_ns": 1767893640238961300,
+      "path": "data/cooling/storage_units.csv",
+      "size": 270
+    },
+    "data/electricity/electricity_demand.csv": {
+      "mtime_ns": 1766763452740295800,
+      "path": "data/electricity/electricity_demand.csv",
+      "size": 1703312
+    },
+    "data/electricity/powerplants.csv": {
+      "mtime_ns": 1773234641179446100,
+      "path": "data/electricity/powerplants.csv",
+      "size": 3037
+    },
+    "data/electricity/res_profile.csv": {
+      "mtime_ns": 1773234641246051700,
+      "path": "data/electricity/res_profile.csv",
+      "size": 3320055
+    },
+    "data/electricity/scaled_inflows.csv": {
+      "mtime_ns": 1773235880882148400,
+      "path": "data/electricity/scaled_inflows.csv",
+      "size": 5741101
+    },
+    "data/electricity/storage_units.csv": {
+      "mtime_ns": 1773234641450355200,
+      "path": "data/electricity/storage_units.csv",
+      "size": 366
+    },
+    "data/fuel_cost.csv": {
+      "mtime_ns": 1767876307073478100,
+      "path": "data/fuel_cost.csv",
+      "size": 6039143
+    },
+    "data/fuels/converters.csv": {
+      "mtime_ns": 1773403855131684300,
+      "path": "data/fuels/converters.csv",
+      "size": 1102
+    },
+    "data/fuels/demand.csv": {
+      "mtime_ns": 1773404832235638000,
+      "path": "data/fuels/demand.csv",
+      "size": 2541669
+    },
+    "data/fuels/storage_units.csv": {
+      "mtime_ns": 1773403898082445600,
+      "path": "data/fuels/storage_units.csv",
+      "size": 387
+    },
+    "data/heating/COP.csv": {
+      "mtime_ns": 1773395674904724100,
+      "path": "data/heating/COP.csv",
+      "size": 1269877
+    },
+    "data/heating/converters.csv": {
+      "mtime_ns": 1773397418638200100,
+      "path": "data/heating/converters.csv",
+      "size": 866
+    },
+    "data/heating/heat_demand.csv": {
+      "mtime_ns": 1773395798397441000,
+      "path": "data/heating/heat_demand.csv",
+      "size": 2083620
+    },
+    "data/heating/storage_units.csv": {
+      "mtime_ns": 1767878070230465800,
+      "path": "data/heating/storage_units.csv",
+      "size": 377
+    },
+    "data/industry/converters.csv": {
+      "mtime_ns": 1773398280551389000,
+      "path": "data/industry/converters.csv",
+      "size": 918
+    },
+    "data/industry/industry_demand.csv": {
+      "mtime_ns": 1773395857989436100,
+      "path": "data/industry/industry_demand.csv",
+      "size": 1395815
+    },
+    "data/industry/storage_units.csv": {
+      "mtime_ns": 1773398276481922800,
+      "path": "data/industry/storage_units.csv",
+      "size": 377
+    },
+    "data/transport/transport_demand_timeseries.csv": {
+      "mtime_ns": 1773394539002375900,
+      "path": "data/transport/transport_demand_timeseries.csv",
+      "size": 319495
+    },
+    "data/transport/transport_fleet_and_demand.xlsx": {
+      "mtime_ns": 1773396134904588900,
+      "path": "data/transport/transport_fleet_and_demand.xlsx",
+      "size": 11276
+    },
+    "data/transport/transport_general_parameters.xlsx": {
+      "mtime_ns": 1772750929360010500,
+      "path": "data/transport/transport_general_parameters.xlsx",
+      "size": 20398
+    },
+    "data/transport/transport_storage_availability.csv": {
+      "mtime_ns": 1773394734824510700,
+      "path": "data/transport/transport_storage_availability.csv",
+      "size": 287139
+    }
+  },
+  "source_scopes": {
+    "data/buses.csv": "shared:buses",
+    "data/cooling/COP.csv": "sector:cooling",
+    "data/cooling/converters.csv": "sector:cooling",
+    "data/cooling/cooling_demand.csv": "sector:cooling",
+    "data/cooling/storage_units.csv": "sector:cooling",
+    "data/electricity/electricity_demand.csv": "sector:electricity",
+    "data/electricity/powerplants.csv": "sector:electricity",
+    "data/electricity/res_profile.csv": "sector:electricity",
+    "data/electricity/scaled_inflows.csv": "sector:electricity",
+    "data/electricity/storage_units.csv": "sector:electricity",
+    "data/fuel_cost.csv": "shared:fuel_cost",
+    "data/fuels/converters.csv": "shared:fuels_converters",
+    "data/fuels/demand.csv": "shared:fuels_demand",
+    "data/fuels/storage_units.csv": "shared:fuels_storage",
+    "data/heating/COP.csv": "sector:heating",
+    "data/heating/converters.csv": "sector:heating",
+    "data/heating/heat_demand.csv": "sector:heating",
+    "data/heating/storage_units.csv": "sector:heating",
+    "data/industry/converters.csv": "sector:industry",
+    "data/industry/industry_demand.csv": "sector:industry",
+    "data/industry/storage_units.csv": "sector:industry",
+    "data/transport/transport_demand_timeseries.csv": "transport",
+    "data/transport/transport_fleet_and_demand.xlsx": "transport",
+    "data/transport/transport_general_parameters.xlsx": "transport",
+    "data/transport/transport_storage_availability.csv": "transport"
+  },
+  "validation_mode": "strict"
+}

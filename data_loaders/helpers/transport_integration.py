@@ -4,6 +4,36 @@ import pandas as pd
 
 from data_models.Bus import Bus
 from data_models.Transport import Transport
+from data_loaders.helpers.timeseries import empty_frame
+
+TRANSPORT_STORAGE_COLUMNS = [
+    "unit",
+    "system",
+    "region",
+    "tech",
+    "carrier_in",
+    "carrier_out",
+    "bus_in",
+    "bus_out",
+    "e_nom",
+    "e_nom_max",
+    "e_min",
+    "p_charge_nom",
+    "p_charge_nom_max",
+    "p_discharge_nom",
+    "p_discharge_nom_max",
+    "duration_charge",
+    "duration_discharge",
+    "efficiency_charge",
+    "efficiency_discharge",
+    "standby_loss",
+    "capital_cost_energy",
+    "capital_cost_power_charge",
+    "capital_cost_power_discharge",
+    "lifetime",
+    "spillage_cost",
+]
+EMPTY_STORAGE_AVAILABILITY = empty_frame(["unit", "period", "year", "availability"])
 
 
 def transport_storage_units(transport: Transport) -> list[str]:
@@ -16,21 +46,12 @@ def transport_storage_units(transport: Transport) -> list[str]:
 def transport_to_storage(transport: Transport) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Convert canonical transport tables into storage static rows and availability."""
     if transport.static.empty:
-        return (
-            pd.DataFrame(columns=[
-                "unit", "system", "region", "tech", "carrier_in", "carrier_out", "bus_in", "bus_out",
-                "e_nom", "e_nom_max", "e_min", "p_charge_nom", "p_charge_nom_max", "p_discharge_nom",
-                "p_discharge_nom_max", "duration_charge", "duration_discharge", "efficiency_charge",
-                "efficiency_discharge", "standby_loss", "capital_cost_energy", "capital_cost_power_charge",
-                "capital_cost_power_discharge", "lifetime", "spillage_cost",
-            ]),
-            pd.DataFrame(columns=["unit", "period", "year", "availability"]),
-        )
+        return pd.DataFrame(columns=TRANSPORT_STORAGE_COLUMNS), EMPTY_STORAGE_AVAILABILITY.copy()
 
     static = transport.static.copy()
     static = static[static["supports_grid_connection"].fillna(False).astype(bool)].copy()
     if static.empty:
-        return pd.DataFrame(columns=[]), pd.DataFrame(columns=["unit", "period", "year", "availability"])
+        return pd.DataFrame(columns=TRANSPORT_STORAGE_COLUMNS), EMPTY_STORAGE_AVAILABILITY.copy()
 
     fleet_units = pd.to_numeric(static["fleet_units"], errors="coerce")
     battery_capacity = pd.to_numeric(static["battery_capacity_kwh"], errors="coerce")
@@ -75,13 +96,13 @@ def transport_to_storage(transport: Transport) -> tuple[pd.DataFrame, pd.DataFra
 def transport_to_system_demand(transport: Transport, buses: Bus) -> pd.DataFrame:
     """Map canonical transport demand into the system demand table."""
     if transport.static.empty or transport.demand.empty:
-        return pd.DataFrame(columns=["system", "region", "bus", "carrier", "period", "year", "p_t"])
+        return empty_frame(["system", "region", "bus", "carrier", "period", "year", "p_t"])
 
     static = transport.static.reset_index().rename(columns={"index": "unit"})
     static["bus_in"] = static["bus_in"].astype(str).str.strip()
     static = static[static["bus_in"] != ""].copy()
     if static.empty:
-        return pd.DataFrame(columns=["system", "region", "bus", "carrier", "period", "year", "p_t"])
+        return empty_frame(["system", "region", "bus", "carrier", "period", "year", "p_t"])
 
     bus_meta = buses.static.reset_index().rename(columns={"bus": "bus_in"})
     merged = static.merge(bus_meta[["bus_in", "carrier"]], on="bus_in", how="left", validate="many_to_one")

@@ -6,7 +6,9 @@ HR,HR,HR_EL_TR,electricity
 HR,HR,EL-TOZagreb,heat
 HR,HR,TE-TOOsijek,heat
 HR,HR,TE-TOZagreb,heat
-HR,HR,HR_IND,heat
+HR,HR,HR_IND,industry_heat
 HR,HR,HR_General_heating,heat
 HR,HR,HR_General_cooling,cooling
 HR,HR,HR_H2,hydrogen
+HR,HR,HR_H2_TR,hydrogen
+HR,HR,HR_H2_EL,hydrogen

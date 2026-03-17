@@ -64,6 +64,33 @@ def normalize_dataframe(
     return table
 
 
+def validate_table(
+    df: pd.DataFrame,
+    spec: TableSpec,
+    *,
+    keys: Iterable[str] = (),
+    non_negative: Iterable[str] = (),
+    positive: Iterable[str] = (),
+    index_col: Optional[str] = None,
+) -> pd.DataFrame:
+    if index_col and index_col not in df.columns and df.index.name == index_col:
+        df = df.reset_index()
+    table = normalize_dataframe(df, spec, copy=True)
+    if keys:
+        validate_unique_keys(table, list(keys), spec.name)
+    if non_negative:
+        validate_non_negative(table, list(non_negative), spec.name)
+    for column in positive:
+        if column not in table.columns:
+            continue
+        bad = table[pd.to_numeric(table[column], errors="coerce") <= 0]
+        if not bad.empty:
+            raise ValueError(f"{spec.name} column '{column}' must be > 0.")
+    if index_col:
+        return table.set_index(index_col, drop=True)
+    return table.reset_index(drop=True)
+
+
 def validate_non_negative(df: pd.DataFrame, columns: Iterable[str], table_name: str) -> pd.DataFrame:
     for col in columns:
         if col not in df.columns:

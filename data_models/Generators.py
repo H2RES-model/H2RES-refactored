@@ -10,10 +10,7 @@ from data_models.table_schema import (
     TableSpec,
     dataframe_to_multiindex_dict,
     empty_table,
-    ensure_dataframe,
-    normalize_dataframe,
-    validate_non_negative,
-    validate_unique_keys,
+    validate_table,
 )
 
 U = str
@@ -31,66 +28,66 @@ class Generators(BaseModel):
             description="Static generator and converter attributes indexed by unit.",
             index=("unit",),
             columns=(
-                ColumnSpec("unit", "string", "Generator/converter unit identifier.", status="mandatory"),
-                ColumnSpec("system", "string", "System/scenario tag."),
-                ColumnSpec("region", "string", "Region/zone identifier."),
-                ColumnSpec("tech", "string", "Technology label.", status="mandatory"),
-                ColumnSpec("fuel", "string", "Fuel type.", status="mandatory"),
-                ColumnSpec("unit_type", "string", "Supply/conversion role."),
-                ColumnSpec("carrier_in", "string", "Input carrier."),
-                ColumnSpec("carrier_out", "string", "Output carrier."),
-                ColumnSpec("bus_in", "string", "Input bus."),
-                ColumnSpec("bus_out", "string", "Output bus."),
-                ColumnSpec("bus_out_2", "string", "Secondary output bus."),
-                ColumnSpec("carrier_out_2", "string", "Secondary output carrier."),
-                ColumnSpec("p_nom", "float", "Existing output power capacity.", unit="MW", status="mandatory"),
-                ColumnSpec("p_nom_max", "float", "Maximum output power capacity.", unit="MW"),
-                ColumnSpec("cap_factor", "float", "Capacity factor.", unit="p.u.", status="mandatory"),
-                ColumnSpec("capital_cost", "float", "Power investment cost.", unit="EUR/MW", status="mandatory"),
-                ColumnSpec("lifetime", "int", "Technical/economic lifetime.", unit="years", status="mandatory"),
-                ColumnSpec("decom_start_existing", "int", "Existing decommissioning start year.", unit="year", status="mandatory"),
-                ColumnSpec("decom_start_new", "int", "New-build decommissioning start year.", unit="year", status="mandatory"),
-                ColumnSpec("final_cap", "float", "Residual power capacity at end of horizon.", unit="MW", status="mandatory"),
-                ColumnSpec("efficiency", "float", "Static efficiency.", unit="p.u.", status="mandatory"),
-                ColumnSpec("co2_intensity", "float", "CO2 intensity on output.", unit="tCO2/MWh_output", status="mandatory"),
-                ColumnSpec("var_cost_no_fuel", "float", "Non-fuel variable cost.", unit="EUR/MWh_output", status="mandatory"),
-                ColumnSpec("ramp_up_rate", "float", "Ramp-up rate.", unit="MW/period or p.u.", status="mandatory"),
-                ColumnSpec("ramp_down_rate", "float", "Ramp-down rate.", unit="MW/period or p.u.", status="mandatory"),
-                ColumnSpec("ramping_cost", "float", "Ramping cost coefficient."),
-                ColumnSpec("chp_power_to_heat", "float", "CHP power-to-heat ratio.", unit="p.u."),
-                ColumnSpec("chp_power_loss_factor", "float", "CHP condensing-to-heat slope.", unit="p.u."),
-                ColumnSpec("chp_max_heat", "float", "Maximum CHP heat output.", unit="MW_heat"),
-                ColumnSpec("chp_type", "string", "CHP configuration type."),
+                ColumnSpec("unit",                  "string", "Generator/converter unit identifier.",      status="mandatory"),
+                ColumnSpec("system",                "string", "System/scenario tag."),
+                ColumnSpec("region",                "string", "Region/zone identifier."),
+                ColumnSpec("tech",                  "string", "Technology label.",                          status="mandatory"),
+                ColumnSpec("fuel",                  "string", "Fuel type.",                                 status="mandatory"),
+                ColumnSpec("unit_type",             "string", "Supply/conversion role."),
+                ColumnSpec("carrier_in",            "string", "Input carrier."),
+                ColumnSpec("carrier_out",           "string", "Output carrier."),
+                ColumnSpec("bus_in",                "string", "Input bus."),
+                ColumnSpec("bus_out",               "string", "Output bus."),
+                ColumnSpec("bus_out_2",             "string", "Secondary output bus."),
+                ColumnSpec("carrier_out_2",         "string", "Secondary output carrier."),
+                ColumnSpec("p_nom",                 "float",  "Existing output power capacity.",            unit="MW",                status="mandatory"),
+                ColumnSpec("p_nom_max",             "float",  "Maximum output power capacity.",             unit="MW"),
+                ColumnSpec("cap_factor",            "float",  "Capacity factor.",                           unit="p.u.",              status="mandatory"),
+                ColumnSpec("capital_cost",          "float",  "Power investment cost.",                     unit="EUR/MW",            status="mandatory"),
+                ColumnSpec("lifetime",              "int",    "Technical/economic lifetime.",               unit="years",             status="mandatory"),
+                ColumnSpec("decom_start_existing",  "int",    "Existing decommissioning start year.",      unit="year",              status="mandatory"),
+                ColumnSpec("decom_start_new",       "int",    "New-build decommissioning start year.",     unit="year",              status="mandatory"),
+                ColumnSpec("final_cap",             "float",  "Residual power capacity at end of horizon.", unit="MW",                status="mandatory"),
+                ColumnSpec("efficiency",            "float",  "Static efficiency.",                         unit="p.u.",              status="mandatory"),
+                ColumnSpec("co2_intensity",         "float",  "CO2 intensity on output.",                   unit="tCO2/MWh_output",   status="mandatory"),
+                ColumnSpec("var_cost_no_fuel",      "float",  "Non-fuel variable cost.",                   unit="EUR/MWh_output",    status="mandatory"),
+                ColumnSpec("ramp_up_rate",          "float",  "Ramp-up rate.",                              unit="MW/period or p.u.", status="mandatory"),
+                ColumnSpec("ramp_down_rate",        "float",  "Ramp-down rate.",                            unit="MW/period or p.u.", status="mandatory"),
+                ColumnSpec("ramping_cost",          "float",  "Ramping cost coefficient."),
+                ColumnSpec("chp_power_to_heat",     "float",  "CHP power-to-heat ratio.",                  unit="p.u."),
+                ColumnSpec("chp_power_loss_factor", "float",  "CHP condensing-to-heat slope.",             unit="p.u."),
+                ColumnSpec("chp_max_heat",          "float",  "Maximum CHP heat output.",                  unit="MW_heat"),
+                ColumnSpec("chp_type",              "string", "CHP configuration type."),
             ),
         ),
         "p_t": TableSpec(
             name="generators.p_t",
             description="Generator availability/profile time series.",
             columns=(
-                ColumnSpec("unit", "string", "Generator/converter unit identifier.", status="mandatory"),
-                ColumnSpec("period", "int", "Time period index.", unit="index", status="mandatory"),
-                ColumnSpec("year", "int", "Model year.", unit="year", status="mandatory"),
-                ColumnSpec("p_t", "float", "Availability/profile value.", unit="p.u.", status="mandatory"),
+                ColumnSpec("unit",   "string", "Generator/converter unit identifier.", status="mandatory"),
+                ColumnSpec("period", "int",    "Time period index.",                    unit="index", status="mandatory"),
+                ColumnSpec("year",   "int",    "Model year.",                           unit="year",  status="mandatory"),
+                ColumnSpec("p_t",    "float",  "Availability/profile value.",           unit="p.u.",  status="mandatory"),
             ),
         ),
         "var_cost": TableSpec(
             name="generators.var_cost",
             description="Generator full variable cost time series.",
             columns=(
-                ColumnSpec("unit", "string", "Generator/converter unit identifier.", status="mandatory"),
-                ColumnSpec("period", "int", "Time period index.", unit="index", status="mandatory"),
-                ColumnSpec("year", "int", "Model year.", unit="year", status="mandatory"),
-                ColumnSpec("var_cost", "float", "Full variable cost.", unit="EUR/MWh_output", status="mandatory"),
+                ColumnSpec("unit",     "string", "Generator/converter unit identifier.", status="mandatory"),
+                ColumnSpec("period",   "int",    "Time period index.",                    unit="index",          status="mandatory"),
+                ColumnSpec("year",     "int",    "Model year.",                           unit="year",           status="mandatory"),
+                ColumnSpec("var_cost", "float",  "Full variable cost.",                   unit="EUR/MWh_output", status="mandatory"),
             ),
         ),
         "efficiency_ts": TableSpec(
             name="generators.efficiency_ts",
             description="Generator time-varying efficiency.",
             columns=(
-                ColumnSpec("unit", "string", "Generator/converter unit identifier.", status="mandatory"),
-                ColumnSpec("period", "int", "Time period index.", unit="index", status="mandatory"),
-                ColumnSpec("year", "int", "Model year.", unit="year", status="mandatory"),
-                ColumnSpec("efficiency_ts", "float", "Time-varying efficiency.", unit="p.u.", status="mandatory"),
+                ColumnSpec("unit",          "string", "Generator/converter unit identifier.", status="mandatory"),
+                ColumnSpec("period",        "int",    "Time period index.",                    unit="index", status="mandatory"),
+                ColumnSpec("year",          "int",    "Model year.",                           unit="year",  status="mandatory"),
+                ColumnSpec("efficiency_ts", "float",  "Time-varying efficiency.",              unit="p.u.",  status="mandatory"),
             ),
         ),
     }
@@ -105,33 +102,24 @@ class Generators(BaseModel):
     @field_validator("static")
     @classmethod
     def _validate_static(cls, df: pd.DataFrame) -> pd.DataFrame:
-        spec = cls.TABLE_SPECS["static"]
-        if "unit" not in df.columns and df.index.name == "unit":
-            df = df.reset_index()
-        table = normalize_dataframe(ensure_dataframe(df, spec), spec, copy=True)
-        validate_unique_keys(table, ["unit"], spec.name)
-        validate_non_negative(
-            table,
-            ["p_nom", "p_nom_max", "cap_factor", "capital_cost", "lifetime", "efficiency", "var_cost_no_fuel"],
-            spec.name,
+        return validate_table(
+            df,
+            cls.TABLE_SPECS["static"],
+            keys=["unit"],
+            non_negative=["p_nom", "p_nom_max", "cap_factor", "capital_cost", "lifetime", "efficiency", "var_cost_no_fuel"],
+            positive=["efficiency"],
+            index_col="unit",
         )
-        bad_eff = table[pd.to_numeric(table.get("efficiency"), errors="coerce") <= 0] if "efficiency" in table.columns else table.iloc[0:0]
-        if not bad_eff.empty:
-            raise ValueError("generators.static column 'efficiency' must be > 0.")
-        return table.set_index("unit", drop=True)
 
     @classmethod
     def _validate_timeseries(cls, df: pd.DataFrame, name: str) -> pd.DataFrame:
-        spec = cls.TABLE_SPECS[name]
-        table = normalize_dataframe(ensure_dataframe(df, spec), spec, copy=True)
-        validate_unique_keys(table, ["unit", "period", "year"], spec.name)
-        if name == "efficiency_ts":
-            bad = table[pd.to_numeric(table["efficiency_ts"], errors="coerce") <= 0]
-            if not bad.empty:
-                raise ValueError("generators.efficiency_ts must be > 0.")
-        else:
-            validate_non_negative(table, [name], spec.name)
-        return table.reset_index(drop=True)
+        return validate_table(
+            df,
+            cls.TABLE_SPECS[name],
+            keys=["unit", "period", "year"],
+            non_negative=[] if name == "efficiency_ts" else [name],
+            positive=["efficiency_ts"] if name == "efficiency_ts" else [],
+        )
 
     @field_validator("p_t")
     @classmethod

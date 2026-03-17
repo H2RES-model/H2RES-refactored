@@ -1,0 +1,10 @@
+{
+  "CO2_limit": {},
+  "CO2_price": {},
+  "NPV": {},
+  "ceep_limit": false,
+  "ceep_parameter": null,
+  "res_inv": true,
+  "rps": {},
+  "rps_inv": false
+}

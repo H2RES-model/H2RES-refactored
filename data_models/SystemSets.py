@@ -48,12 +48,12 @@ class SystemSets(BaseModel):
     # Carriers and buses
     # --------------------------
     carriers: List[Carrier] = Field(
-        default_factory=lambda: ["Electricity"],
+        default_factory=list,
         description="Energy carriers (e.g. Electricity, Heat, H2).",
         json_schema_extra={"unit": "n.a.", "status": "optional"},
     )
     buses: List[BusId] = Field(
-        default_factory=lambda: ["SystemBus"],
+        default_factory=list,
         description="Network buses; single-node version uses one bus.",
         json_schema_extra={"unit": "n.a.", "status": "optional"},
     )

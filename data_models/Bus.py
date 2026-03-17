@@ -9,9 +9,7 @@ from data_models.table_schema import (
     ColumnSpec,
     TableSpec,
     empty_table,
-    ensure_dataframe,
-    normalize_dataframe,
-    validate_unique_keys,
+    validate_table,
 )
 
 BusId = str
@@ -26,20 +24,20 @@ class Bus(BaseModel):
             description="Static bus metadata indexed by bus identifier.",
             index=("bus",),
             columns=(
-                ColumnSpec("bus", "string", "Bus identifier.", status="mandatory"),
-                ColumnSpec("system", "string", "System/country tag for the bus."),
-                ColumnSpec("region", "string", "Region/zone tag for the bus."),
-                ColumnSpec("carrier", "string", "Carrier assigned to the bus.", status="mandatory"),
+                ColumnSpec("bus",     "string", "Bus identifier.",                  status="mandatory"),
+                ColumnSpec("system",  "string", "System/country tag for the bus."),
+                ColumnSpec("region",  "string", "Region/zone tag for the bus."),
+                ColumnSpec("carrier", "string", "Carrier assigned to the bus.",     status="mandatory"),
             ),
         ),
         "attachments": TableSpec(
             name="bus.attachments",
             description="Units attached to each bus by component role.",
             columns=(
-                ColumnSpec("bus", "string", "Bus identifier.", status="mandatory"),
+                ColumnSpec("bus",       "string", "Bus identifier.",                     status="mandatory"),
                 ColumnSpec("component", "string", "Attached component collection name.", status="mandatory"),
-                ColumnSpec("unit", "string", "Attached unit identifier.", status="mandatory"),
-                ColumnSpec("role", "string", "Optional role label for the attachment."),
+                ColumnSpec("unit",      "string", "Attached unit identifier.",           status="mandatory"),
+                ColumnSpec("role",      "string", "Optional role label for the attachment."),
             ),
         ),
     }
@@ -60,20 +58,21 @@ class Bus(BaseModel):
     @field_validator("static")
     @classmethod
     def _validate_static(cls, df: pd.DataFrame) -> pd.DataFrame:
-        spec = cls.TABLE_SPECS["static"]
-        if "bus" not in df.columns and df.index.name == "bus":
-            df = df.reset_index()
-        table = normalize_dataframe(ensure_dataframe(df, spec), spec, copy=True)
-        validate_unique_keys(table, ["bus"], spec.name)
-        return table.set_index("bus", drop=True)
+        return validate_table(
+            df,
+            cls.TABLE_SPECS["static"],
+            keys=["bus"],
+            index_col="bus",
+        )
 
     @field_validator("attachments")
     @classmethod
     def _validate_attachments(cls, df: pd.DataFrame) -> pd.DataFrame:
-        spec = cls.TABLE_SPECS["attachments"]
-        table = normalize_dataframe(ensure_dataframe(df, spec), spec, copy=True)
-        validate_unique_keys(table, ["bus", "component", "unit", "role"], spec.name)
-        return table.reset_index(drop=True)
+        return validate_table(
+            df,
+            cls.TABLE_SPECS["attachments"],
+            keys=["bus", "component", "unit", "role"],
+        )
 
     @property
     def name(self) -> List[BusId]:
@@ -150,18 +149,21 @@ class Bus(BaseModel):
         *,
         generators_at_bus: Dict[BusId, List[str]] | None = None,
         storage_at_bus: Dict[BusId, List[str]] | None = None,
-        default_carrier: str = "electricity",
     ) -> "Bus":
         df = pd.read_csv(buses_csv_path)
         required = {"bus", "carrier"}
         missing = required - set(df.columns)
         if missing:
             raise ValueError(f"{buses_csv_path} is missing required columns: {sorted(missing)}")
+        blank_carrier = df["carrier"].isna() | df["carrier"].astype(str).str.strip().eq("")
+        if blank_carrier.any():
+            buses = df.loc[blank_carrier, "bus"].astype(str).tolist()
+            raise ValueError(f"{buses_csv_path} has missing required values in 'carrier': {buses}")
 
         static = df[["bus"]].copy()
         static["system"] = df["system"] if "system" in df.columns else ""
         static["region"] = df["region"] if "region" in df.columns else ""
-        static["carrier"] = df["carrier"].fillna(default_carrier)
+        static["carrier"] = df["carrier"].astype(str)
 
         rows: list[dict[str, str]] = []
         for bus, units in (generators_at_bus or {}).items():

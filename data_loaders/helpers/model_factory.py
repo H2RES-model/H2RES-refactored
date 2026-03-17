@@ -18,16 +18,12 @@ def validation_mode() -> ValidationMode:
 
     Precedence:
     1. ``H2RES_VALIDATION_MODE=fast|strict|off``
-    2. legacy ``H2RES_VALIDATE_MODELS=1`` -> ``strict``
-    3. default ``fast``
+    2. default ``fast``
     """
     raw_mode = os.getenv("H2RES_VALIDATION_MODE", "").strip().lower()
     if raw_mode in {"fast", "strict", "off"}:
         return raw_mode  # type: ignore[return-value]
 
-    legacy = os.getenv("H2RES_VALIDATE_MODELS", "0").strip().lower()
-    if legacy in {"1", "true", "yes", "on"}:
-        return "strict"
     return "fast"
 
 

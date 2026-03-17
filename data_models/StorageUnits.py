@@ -10,10 +10,7 @@ from data_models.table_schema import (
     TableSpec,
     dataframe_to_multiindex_dict,
     empty_table,
-    ensure_dataframe,
-    normalize_dataframe,
-    validate_non_negative,
-    validate_unique_keys,
+    validate_table,
 )
 
 U = str
@@ -31,70 +28,70 @@ class StorageUnits(BaseModel):
             description="Static storage unit attributes indexed by unit.",
             index=("unit",),
             columns=(
-                ColumnSpec("unit", "string", "Storage unit identifier.", status="mandatory"),
-                ColumnSpec("system", "string", "System/scenario tag."),
-                ColumnSpec("region", "string", "Region/zone identifier."),
-                ColumnSpec("tech", "string", "Storage technology."),
-                ColumnSpec("carrier_in", "string", "Input carrier."),
-                ColumnSpec("carrier_out", "string", "Output carrier."),
-                ColumnSpec("bus_in", "string", "Charging bus."),
-                ColumnSpec("bus_out", "string", "Discharging bus."),
-                ColumnSpec("e_nom", "float", "Existing energy capacity.", unit="MWh"),
-                ColumnSpec("e_min", "float", "Minimum energy level.", unit="MWh"),
-                ColumnSpec("e_nom_max", "float", "Maximum energy capacity.", unit="MWh"),
-                ColumnSpec("p_charge_nom", "float", "Charge power limit.", unit="MW"),
-                ColumnSpec("p_charge_nom_max", "float", "Maximum charge power.", unit="MW"),
-                ColumnSpec("p_discharge_nom", "float", "Discharge power limit.", unit="MW"),
-                ColumnSpec("p_discharge_nom_max", "float", "Maximum discharge power.", unit="MW"),
-                ColumnSpec("duration_charge", "float", "Charge duration.", unit="hours"),
-                ColumnSpec("duration_discharge", "float", "Discharge duration.", unit="hours"),
-                ColumnSpec("efficiency_charge", "float", "Charge efficiency.", unit="p.u."),
-                ColumnSpec("efficiency_discharge", "float", "Discharge efficiency.", unit="p.u."),
-                ColumnSpec("standby_loss", "float", "Standing loss.", unit="p.u."),
-                ColumnSpec("capital_cost_energy", "float", "Energy capacity capex.", unit="EUR/MWh"),
-                ColumnSpec("capital_cost_power_charge", "float", "Charge power capex.", unit="EUR/MW"),
-                ColumnSpec("capital_cost_power_discharge", "float", "Discharge power capex.", unit="EUR/MW"),
-                ColumnSpec("lifetime", "int", "Technical/economic lifetime.", unit="years"),
-                ColumnSpec("spillage_cost", "float", "Spillage cost.", unit="EUR/MWh"),
+                ColumnSpec("unit",                         "string", "Storage unit identifier.",                status="mandatory"),
+                ColumnSpec("system",                       "string", "System/scenario tag."),
+                ColumnSpec("region",                       "string", "Region/zone identifier."),
+                ColumnSpec("tech",                         "string", "Storage technology."),
+                ColumnSpec("carrier_in",                   "string", "Input carrier."),
+                ColumnSpec("carrier_out",                  "string", "Output carrier."),
+                ColumnSpec("bus_in",                       "string", "Charging bus."),
+                ColumnSpec("bus_out",                      "string", "Discharging bus."),
+                ColumnSpec("e_nom",                        "float",  "Existing energy capacity.",               unit="MWh"),
+                ColumnSpec("e_min",                        "float",  "Minimum energy level.",                  unit="MWh"),
+                ColumnSpec("e_nom_max",                    "float",  "Maximum energy capacity.",               unit="MWh"),
+                ColumnSpec("p_charge_nom",                 "float",  "Charge power limit.",                   unit="MW"),
+                ColumnSpec("p_charge_nom_max",             "float",  "Maximum charge power.",                 unit="MW"),
+                ColumnSpec("p_discharge_nom",              "float",  "Discharge power limit.",                unit="MW"),
+                ColumnSpec("p_discharge_nom_max",          "float",  "Maximum discharge power.",              unit="MW"),
+                ColumnSpec("duration_charge",              "float",  "Charge duration.",                      unit="hours"),
+                ColumnSpec("duration_discharge",           "float",  "Discharge duration.",                   unit="hours"),
+                ColumnSpec("efficiency_charge",            "float",  "Charge efficiency.",                    unit="p.u."),
+                ColumnSpec("efficiency_discharge",         "float",  "Discharge efficiency.",                 unit="p.u."),
+                ColumnSpec("standby_loss",                 "float",  "Standing loss.",                        unit="p.u."),
+                ColumnSpec("capital_cost_energy",          "float",  "Energy capacity capex.",                unit="EUR/MWh"),
+                ColumnSpec("capital_cost_power_charge",    "float",  "Charge power capex.",                  unit="EUR/MW"),
+                ColumnSpec("capital_cost_power_discharge", "float",  "Discharge power capex.",               unit="EUR/MW"),
+                ColumnSpec("lifetime",                     "int",    "Technical/economic lifetime.",          unit="years"),
+                ColumnSpec("spillage_cost",                "float",  "Spillage cost.",                        unit="EUR/MWh"),
             ),
         ),
         "inflow": TableSpec(
             name="storage.inflow",
             description="Storage inflow time series.",
             columns=(
-                ColumnSpec("unit", "string", "Storage unit identifier.", status="mandatory"),
-                ColumnSpec("period", "int", "Time period index.", unit="index", status="mandatory"),
-                ColumnSpec("year", "int", "Model year.", unit="year", status="mandatory"),
-                ColumnSpec("inflow", "float", "Exogenous inflow.", unit="MWh/period", status="mandatory"),
+                ColumnSpec("unit",   "string", "Storage unit identifier.", status="mandatory"),
+                ColumnSpec("period", "int",    "Time period index.",       unit="index",      status="mandatory"),
+                ColumnSpec("year",   "int",    "Model year.",              unit="year",       status="mandatory"),
+                ColumnSpec("inflow", "float",  "Exogenous inflow.",        unit="MWh/period", status="mandatory"),
             ),
         ),
         "availability": TableSpec(
             name="storage.availability",
             description="Storage availability factor time series.",
             columns=(
-                ColumnSpec("unit", "string", "Storage unit identifier.", status="mandatory"),
-                ColumnSpec("period", "int", "Time period index.", unit="index", status="mandatory"),
-                ColumnSpec("year", "int", "Model year.", unit="year", status="mandatory"),
-                ColumnSpec("availability", "float", "Availability factor.", unit="p.u.", status="mandatory"),
+                ColumnSpec("unit",         "string", "Storage unit identifier.", status="mandatory"),
+                ColumnSpec("period",       "int",    "Time period index.",       unit="index", status="mandatory"),
+                ColumnSpec("year",         "int",    "Model year.",              unit="year",  status="mandatory"),
+                ColumnSpec("availability", "float",  "Availability factor.",     unit="p.u.",  status="mandatory"),
             ),
         ),
         "e_nom_ts": TableSpec(
             name="storage.e_nom_ts",
             description="Time-varying effective energy capacity.",
             columns=(
-                ColumnSpec("unit", "string", "Storage unit identifier.", status="mandatory"),
-                ColumnSpec("period", "int", "Time period index.", unit="index", status="mandatory"),
-                ColumnSpec("year", "int", "Model year.", unit="year", status="mandatory"),
-                ColumnSpec("e_nom_ts", "float", "Time-varying effective energy capacity.", unit="MWh", status="mandatory"),
+                ColumnSpec("unit",     "string", "Storage unit identifier.",                status="mandatory"),
+                ColumnSpec("period",   "int",    "Time period index.",                      unit="index", status="mandatory"),
+                ColumnSpec("year",     "int",    "Model year.",                             unit="year",  status="mandatory"),
+                ColumnSpec("e_nom_ts", "float",  "Time-varying effective energy capacity.", unit="MWh",   status="mandatory"),
             ),
         ),
         "investment_costs": TableSpec(
             name="storage.investment_costs",
             description="Optional storage energy-capex overrides by unit and year.",
             columns=(
-                ColumnSpec("unit", "string", "Storage unit identifier.", status="mandatory"),
-                ColumnSpec("year", "int", "Model year.", unit="year", status="mandatory"),
-                ColumnSpec("e_nom_inv_cost", "float", "Specific energy investment cost.", unit="EUR/MWh", status="mandatory"),
+                ColumnSpec("unit",           "string", "Storage unit identifier.",         status="mandatory"),
+                ColumnSpec("year",           "int",    "Model year.",                      unit="year",    status="mandatory"),
+                ColumnSpec("e_nom_inv_cost", "float",  "Specific energy investment cost.", unit="EUR/MWh", status="mandatory"),
             ),
         ),
     }
@@ -110,14 +107,11 @@ class StorageUnits(BaseModel):
     @field_validator("static")
     @classmethod
     def _validate_static(cls, df: pd.DataFrame) -> pd.DataFrame:
-        spec = cls.TABLE_SPECS["static"]
-        if "unit" not in df.columns and df.index.name == "unit":
-            df = df.reset_index()
-        table = normalize_dataframe(ensure_dataframe(df, spec), spec, copy=True)
-        validate_unique_keys(table, ["unit"], spec.name)
-        validate_non_negative(
-            table,
-            [
+        return validate_table(
+            df,
+            cls.TABLE_SPECS["static"],
+            keys=["unit"],
+            non_negative=[
                 "e_nom",
                 "e_min",
                 "e_nom_max",
@@ -132,17 +126,17 @@ class StorageUnits(BaseModel):
                 "capital_cost_power_discharge",
                 "lifetime",
             ],
-            spec.name,
+            index_col="unit",
         )
-        return table.set_index("unit", drop=True)
 
     @classmethod
     def _validate_timeseries(cls, df: pd.DataFrame, name: str) -> pd.DataFrame:
-        spec = cls.TABLE_SPECS[name]
-        table = normalize_dataframe(ensure_dataframe(df, spec), spec, copy=True)
-        validate_unique_keys(table, ["unit", "period", "year"], spec.name)
-        validate_non_negative(table, [name], spec.name)
-        return table.reset_index(drop=True)
+        return validate_table(
+            df,
+            cls.TABLE_SPECS[name],
+            keys=["unit", "period", "year"],
+            non_negative=[name],
+        )
 
     @field_validator("inflow")
     @classmethod
@@ -162,11 +156,12 @@ class StorageUnits(BaseModel):
     @field_validator("investment_costs")
     @classmethod
     def _validate_investment_costs(cls, df: pd.DataFrame) -> pd.DataFrame:
-        spec = cls.TABLE_SPECS["investment_costs"]
-        table = normalize_dataframe(ensure_dataframe(df, spec), spec, copy=True)
-        validate_unique_keys(table, ["unit", "year"], spec.name)
-        validate_non_negative(table, ["e_nom_inv_cost"], spec.name)
-        return table.reset_index(drop=True)
+        return validate_table(
+            df,
+            cls.TABLE_SPECS["investment_costs"],
+            keys=["unit", "year"],
+            non_negative=["e_nom_inv_cost"],
+        )
 
     @property
     def unit(self) -> List[U]:

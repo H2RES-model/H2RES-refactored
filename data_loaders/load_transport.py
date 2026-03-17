@@ -1,19 +1,17 @@
 from __future__ import annotations
 
-from typing import Dict, Tuple
-
 import pandas as pd
 
 from data_models.SystemSets import SystemSets
 from data_models.Transport import Transport
 from data_loaders.helpers.io import TableCache
 from data_loaders.helpers.model_factory import build_model
+from data_loaders.helpers.timeseries import empty_frame
 from data_loaders.helpers.transport_utils import (
-    _load_transport_inputs,
-    _normalize_params,
-    _read_transport_demand_totals,
-    _read_transport_ts,
     _is_electric_transport_tech,
+    build_transport_availability,
+    build_transport_demand,
+    build_transport_params,
 )
 
 
@@ -21,117 +19,95 @@ def load_transport(
     *,
     sets: SystemSets,
     general_params_path: str,
-    zones_params_path: str,
+    fleet_and_demand_path: str,
     availability_path: str,
-    demand_path: str,
+    demand_timeseries_path: str,
     table_cache: TableCache | None = None,
 ) -> Transport:
-    """Load and normalize transport into one canonical internal component."""
-
-    del table_cache  # current transport parsers read source files directly
-
-    df_raw = _load_transport_inputs(
+    """Load transport directly from the raw source tables."""
+    params = build_transport_params(
         general_params_path=general_params_path,
-        zones_params_path=zones_params_path,
+        fleet_and_demand_path=fleet_and_demand_path,
+        cache=table_cache,
     )
-    params = _normalize_params(df_raw, zones_params_path).copy()
-
-    params = params.rename(
-        columns={
-            "name": "unit",
-            "transport_sector_bus": "transport_segment",
-            "average_bat": "battery_capacity_kwh",
-            "average_ch_rate": "charge_rate_kw",
-            "ev_grid_eff": "grid_efficiency",
-            "ev_sto_min": "storage_min_soc",
-            "V2G_cost": "v2g_cost",
-            "V2G_year_cost_variability": "v2g_year_cost_variability",
-            "life_time": "lifetime",
-        }
+    availability_raw = build_transport_availability(
+        availability_path=availability_path,
+        params=params,
+        cache=table_cache,
     )
-    params["carrier_in"] = params["fuel_type"].astype(str).str.strip()
-    params["supports_grid_connection"] = params["tech"].map(_is_electric_transport_tech) & params["bus_in"].astype(str).str.strip().ne("")
-
-    demand_totals = _read_transport_demand_totals(demand_path)
-    segment_totals = params.groupby(["system", "region", "transport_segment"])["fleet_units"].sum()
-
-    def _annual_demand(row: pd.Series) -> float:
-        key: Tuple[str, str, str] = (str(row["system"]), str(row["region"]), str(row["transport_segment"]))
-        total = float(segment_totals.loc[key])
-        share = float(row["fleet_units"]) / total if total > 0 else 0.0
-        demand_total = float(demand_totals.get(key, 0.0))
-        eff = float(row["efficiency_primary"])
-        return demand_total * share / eff / 1000.0 if eff > 0 else 0.0
-
-    params["annual_demand_mwh"] = params.apply(_annual_demand, axis=1)
-
-    static_columns = [
-        "unit",
-        "system",
-        "region",
-        "transport_segment",
-        "tech",
-        "fuel_type",
-        "carrier_in",
-        "bus_in",
-        "efficiency_primary",
-        "fleet_units",
-        "battery_capacity_kwh",
-        "charge_rate_kw",
-        "grid_efficiency",
-        "storage_min_soc",
-        "v2g_cost",
-        "v2g_year_cost_variability",
-        "lifetime",
-        "max_investment",
-        "supports_grid_connection",
-        "annual_demand_mwh",
-    ]
-    static = params[static_columns].copy()
-    static = static.set_index("unit", drop=True)
-
-    availability_raw = _read_transport_ts(availability_path, "availability")
-    demand_profile_raw = _read_transport_ts(demand_path, "demand_profile")
-    availability_raw = availability_raw.rename(columns={"transport_sector_bus": "transport_segment"})
-    demand_profile_raw = demand_profile_raw.rename(columns={"transport_sector_bus": "transport_segment"})
+    demand_raw = build_transport_demand(
+        demand_timeseries_path=demand_timeseries_path,
+        params=params,
+        cache=table_cache,
+    )
+    availability_raw = availability_raw[
+        availability_raw["year"].isin(sets.years) & availability_raw["period"].isin(sets.periods)
+    ].reset_index(drop=True)
+    demand_raw = demand_raw[
+        demand_raw["year"].isin(sets.years) & demand_raw["period"].isin(sets.periods)
+    ].reset_index(drop=True)
 
     join_cols = ["system", "region", "transport_segment"]
-    params_join = params[["unit"] + join_cols + ["supports_grid_connection", "annual_demand_mwh", "bus_in", "carrier_in"]].copy()
-    for frame in (params_join, availability_raw, demand_profile_raw):
-        for col in join_cols:
-            if col in frame.columns:
-                frame[col] = frame[col].astype(str).str.strip()
+    params["carrier_in"] = params["fuel_type"].astype(str).str.strip()
+    params["supports_grid_connection"] = (
+        params["tech"].map(_is_electric_transport_tech)
+        & params["bus_in"].astype(str).str.strip().ne("")
+    )
 
-    grid_units = params_join[params_join["supports_grid_connection"]].copy()
-    availability = pd.DataFrame(columns=["unit", "period", "year", "availability"])
-    if not availability_raw.empty and not grid_units.empty:
-        availability = grid_units[["unit"] + join_cols].merge(
-            availability_raw,
-            on=join_cols,
-            how="left",
-            validate="many_to_many",
-        )
+    segment_totals = (
+        params.groupby(join_cols, as_index=False)["fleet_units"]
+        .sum()
+        .rename(columns={"fleet_units": "segment_fleet_units"})
+    )
+    params = params.merge(segment_totals, on=join_cols, how="left", validate="many_to_one")
+    params["annual_demand"] = params["annual_demand"].fillna(0.0)
+
+    fleet_units = params["fleet_units"].astype(float)
+    segment_fleet_units = params["segment_fleet_units"].astype(float)
+    annual_demand = params["annual_demand"].astype(float)
+    params["annual_demand_mwh"] = 0.0
+    valid = segment_fleet_units > 0
+    params.loc[valid, "annual_demand_mwh"] = (
+        annual_demand[valid] * fleet_units[valid] / segment_fleet_units[valid] / 1000.0
+    )
+    params = params.drop(columns=["segment_fleet_units", "annual_demand"])
+
+    static = params[
+        [
+            "unit",
+            "system",
+            "region",
+            "transport_segment",
+            "tech",
+            "fuel_type",
+            "carrier_in",
+            "bus_in",
+            "efficiency_primary",
+            "fleet_units",
+            "battery_capacity_kwh",
+            "charge_rate_kw",
+            "grid_efficiency",
+            "storage_min_soc",
+            "v2g_cost",
+            "lifetime",
+            "max_investment",
+            "supports_grid_connection",
+            "annual_demand_mwh",
+        ]
+    ].set_index("unit", drop=True)
+
+    grid_units = params.loc[params["supports_grid_connection"], ["unit"] + join_cols].copy()
+    availability = empty_frame(["unit", "period", "year", "availability"])
+    if not grid_units.empty:
+        availability = grid_units.merge(availability_raw, on=join_cols, how="left", validate="many_to_many")
         availability = availability.dropna(subset=["availability"])
-        availability = availability[
-            availability["year"].astype(int).isin(sets.years)
-            & availability["period"].astype(int).isin(sets.periods)
-        ][["unit", "period", "year", "availability"]].reset_index(drop=True)
+        availability = availability[["unit", "period", "year", "availability"]].reset_index(drop=True)
 
-    demand_profile = pd.DataFrame(columns=["unit", "period", "year", "demand_profile"])
-    if not demand_profile_raw.empty:
-        demand_profile = params_join[["unit"] + join_cols].merge(
-            demand_profile_raw,
-            on=join_cols,
-            how="left",
-            validate="many_to_many",
-        )
-        demand_profile = demand_profile.dropna(subset=["demand_profile"])
-        demand_profile = demand_profile[
-            demand_profile["year"].astype(int).isin(sets.years)
-            & demand_profile["period"].astype(int).isin(sets.periods)
-        ][["unit", "period", "year", "demand_profile"]].reset_index(drop=True)
+    demand_profile = params[["unit"] + join_cols].merge(demand_raw, on=join_cols, how="left", validate="many_to_many")
+    demand_profile = demand_profile.dropna(subset=["demand_profile"])
+    demand_profile = demand_profile[["unit", "period", "year", "demand_profile"]].reset_index(drop=True)
 
-    demand = pd.DataFrame(columns=["unit", "period", "year", "demand"])
+    demand = empty_frame(["unit", "period", "year", "demand"])
     if not demand_profile.empty:
         annual_lookup = static.reset_index()[["unit", "annual_demand_mwh"]]
         demand = demand_profile.merge(annual_lookup, on="unit", how="left", validate="many_to_one")
